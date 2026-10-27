@@ -4,43 +4,30 @@
   <meta charset="utf-8" />
   <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Spam Avenger for Outlook (Test)</title>
+  <title>Spam Avenger for Outlook</title>
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <script src="analyze.js"></script>
+  <script src="demand.js"></script>
   <link rel="stylesheet" href="taskpane.css" />
 </head>
 <body>
-  <header>
-    <img src="icon128.png" alt="Spam Avenger shield" width="48" height="48" />
+  <header class="sf-head">
+    <img src="icon128.png" alt="Spam Avenger shield" width="34" height="34" />
     <div>
-      <h1>Spam Avenger</h1>
-      <p class="subtitle">Outlook test pane &mdash; not the full addon yet</p>
+      <div class="sf-title">Spam Avenger</div>
+      <div class="sf-tag">Just click, review, send. &middot; v1.1.0</div>
     </div>
   </header>
 
   <div id="no-office" class="note" hidden>
     <p><strong>This page needs to be opened inside Outlook.</strong></p>
-    <p>It is a test pane for an Outlook add-in. Open Outlook, open any email,
-       and click the <strong>Spam Avenger</strong> button on the message.
-       In a plain web browser there is no email for it to inspect.</p>
+    <p>Open Outlook, open any email, and click the <strong>Spam Avenger</strong>
+       button on the message. In a plain web browser there is no email for
+       it to work on.</p>
   </div>
 
   <main id="app" hidden>
-    <section class="card">
-      <h2>Where am I?</h2>
-      <div id="context"><p>Waiting for Outlook&hellip;</p></div>
-    </section>
-
-    <button id="inspect" type="button">Inspect this message</button>
-    <p class="hint">Reads the email you have open and shows exactly what
-       Outlook hands over &mdash; headers and all. Nothing is sent anywhere.</p>
-
-    <div id="results"></div>
-
-    <section class="card" id="engine-card" hidden>
-      <h2>Engine check</h2>
-      <div id="engine"></div>
-    </section>
+    <div id="panel-body" class="sf-body"></div>
   </main>
 
   <script src="taskpane.js"></script>

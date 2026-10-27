@@ -1,73 +1,261 @@
-/* Spam Avenger for Outlook (Test) — task pane styles.
-   Deliberately plain: dark background, big readable text. */
+/* Spam Avenger for Outlook — task pane styles.
+   Adapted from the Gmail addon's panel.css: same class names, same
+   layout, same button-color language (green = Spam Avenger does the
+   work, yellow = a few guided steps for you, orange = you're on your
+   own), retargeted from a floating card to a full-width task pane.
+   The light palette is pinned (color-scheme: light) for the same
+   reason as Gmail v1.0.63: host dark-mode repainting must not flip
+   the yellow buttons' text unreadable. */
+
 body {
-  background: #1b1b1b;
-  color: #f2f2f2;
-  font-family: "Segoe UI", Arial, sans-serif;
-  font-size: 16px;
+  background: #fff;
+  color: #202124;
+  font-family: "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 13px;
   line-height: 1.45;
   margin: 0;
-  padding: 14px;
+  color-scheme: light;
 }
 
-header {
+/* Header — the Gmail panel's red bar. */
+.sf-head {
+  background: #c0392b;
+  color: #fff;
+  padding: 10px 14px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  border-bottom: 3px solid #b03a2e;
-  padding-bottom: 10px;
-  margin-bottom: 14px;
+  gap: 10px;
 }
-header h1 { font-size: 22px; margin: 0; }
-.subtitle { margin: 2px 0 0 0; color: #c9c9c9; font-size: 14px; }
+.sf-head img { display: block; }
+.sf-title { font-weight: 700; font-size: 15px; }
+.sf-tag { font-size: 11px; opacity: 0.9; }
 
-.note, .card {
-  background: #262626;
-  border: 1px solid #444;
+.note {
+  background: #fef7e0;
+  border: 1px solid #f3c1bb;
   border-radius: 8px;
   padding: 12px 14px;
-  margin-bottom: 14px;
+  margin: 14px;
 }
-.card h2 { font-size: 17px; margin: 0 0 8px 0; color: #ffb3ab; }
 
-button#inspect {
-  background: #b03a2e;
-  color: #fff;
-  border: 0;
+.sf-body { padding: 12px 14px; }
+
+.sf-row { display: flex; gap: 8px; margin: 5px 0; line-height: 1.35; }
+.sf-row span { flex: 0 0 92px; color: #5f6368; }
+.sf-row b { font-weight: 500; word-break: break-word; }
+.sf-mono { font-family: monospace; }
+
+.sf-note {
+  background: #fef7e0;
   border-radius: 8px;
-  font-size: 17px;
-  font-weight: 600;
-  padding: 12px 18px;
+  padding: 8px 10px;
+  margin: 8px 0;
+}
+.sf-warn {
+  background: #fce8e6;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 8px 0;
+}
+.sf-flags ul { margin: 4px 0 4px 18px; padding: 0; }
+.sf-flags li { margin: 3px 0; }
+.sf-links-list {
+  margin: 4px 0 4px 18px; padding: 0;
+  font-family: monospace; font-size: 11px; word-break: break-all;
+}
+.sf-links-list li { margin: 3px 0; }
+
+.sf-complaint textarea,
+.sf-demand textarea {
   width: 100%;
+  box-sizing: border-box;
+  font-family: monospace;
+  font-size: 11px;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  padding: 8px;
+  margin: 6px 0;
+  resize: vertical;
+  background: #fff;
+  color: #202124;
+}
+.sf-complaint textarea { height: 130px; }
+.sf-demand textarea { height: 190px; }
+
+.sf-actions { display: flex; gap: 8px; margin-bottom: 6px; }
+.sf-actions button {
+  flex: 1;
+  background: #c0392b;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 4px;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
 }
-button#inspect:hover { background: #c8452c; }
-button#inspect:disabled { background: #666; cursor: wait; }
+.sf-actions button:hover { background: #a93226; }
+.sf-actions button:disabled { background: #9aa0a6; cursor: default; }
+.sf-actions button.sf-btn-green { background: #1e8e3e; color: #fff; }
+.sf-actions button.sf-btn-green:hover { background: #188038; }
+/* Deep gold + white text — the Gmail v1.0.63 palette that stays
+   readable under any host dark-mode repainting. */
+.sf-actions button.sf-btn-yellow { background: #9e6a03; color: #fff; }
+.sf-actions button.sf-btn-yellow:hover { background: #8a5c02; }
+.sf-actions button.sf-btn-orange { background: #a84a08; color: #fff; }
+.sf-actions button.sf-btn-orange:hover { background: #93400a; }
 
-.hint { color: #c9c9c9; font-size: 14px; }
-
-.field { margin-bottom: 14px; }
-.field h3 {
-  font-size: 15px;
-  margin: 0 0 4px 0;
+a.sf-ovh-btn {
+  display: inline-block;
+  background: #9e6a03;
+  color: #fff;
   font-weight: 600;
-}
-.field h3 .status { color: #9be29b; font-weight: 400; }
-.field h3 .status.absent { color: #ff9d94; }
-.field pre {
-  background: #101010;
-  border: 1px solid #3d3d3d;
+  text-decoration: none;
   border-radius: 6px;
-  padding: 8px;
-  margin: 0;
-  max-height: 300px;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: Consolas, "Courier New", monospace;
-  font-size: 12.5px;
+  padding: 4px 10px;
+  margin-top: 4px;
 }
-.kv { margin: 0; }
-.kv dt { color: #c9c9c9; font-size: 14px; }
-.kv dd { margin: 0 0 6px 0; font-weight: 600; }
-.big { font-size: 18px; font-weight: 700; }
+a.sf-ovh-btn:hover { background: #8a5c02; }
+
+.sf-links { margin-top: 8px; }
+.sf-fine { color: #5f6368; font-size: 11px; margin-top: 8px; }
+
+.sf-loading { text-align: center; padding: 18px 0; }
+.sf-spin {
+  width: 28px; height: 28px;
+  border: 3px solid #f3c1bb;
+  border-top-color: #c0392b;
+  border-radius: 50%;
+  margin: 0 auto 10px;
+  animation: sf-spin 0.8s linear infinite;
+}
+@keyframes sf-spin { to { transform: rotate(360deg); } }
+
+.sf-details-toggle {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  background: #f1f3f4;
+  color: #202124;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  padding: 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+.sf-details-toggle:hover { background: #e8eaed; }
+.sf-details { margin-bottom: 4px; }
+
+.sf-legend { font-size: 13px; color: #5f6368; line-height: 1.45; margin: 10px 0 6px; }
+.sf-dot-green { color: #1e8e3e; }
+.sf-dot-yellow { color: #9e6a03; }
+.sf-dot-orange { color: #a84a08; }
+
+/* "Not Spam but still unwanted?" — the PID / data-deletion zone.
+   Ruled off at the bottom of the panel, yellow toggle, tinted card:
+   same as the Gmail panel (v1.0.51–1.0.55). */
+.sf-fight {
+  margin-top: 18px;
+  border-top: 2px solid #dadce0;
+  padding-top: 10px;
+}
+.sf-details-toggle.sf-fight-toggle {
+  background: #9e6a03;
+  color: #fff;
+  border-color: #7d5502;
+}
+.sf-details-toggle.sf-fight-toggle:hover { background: #8a5c02; }
+.sf-demand {
+  background: #f8f9fa;
+  border: 1px solid #e8eaed;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.sf-demand > b { display: block; margin-bottom: 6px; }
+.sf-demand-intro { font-size: 12px; color: #3c4043; line-height: 1.5; margin: 0 0 8px; }
+.sf-demand-sub { margin: -2px 0 6px; }
+.sf-demand-step { margin-top: 6px; }
+.sf-demand-mx { font-size: 12px; line-height: 1.45; margin: 0 0 6px; }
+.sf-demand-mx.sf-mx-ok { color: #137333; }
+.sf-demand-mx.sf-mx-warn { color: #b06000; }
+.sf-demand-mx.sf-mx-muted { color: #5f6368; }
+.sf-lookup-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1a73e8;
+  cursor: pointer;
+  text-align: left;
+}
+.sf-lookup-btn:hover { text-decoration: underline; }
+.sf-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 13px;
+  margin: 2px 0 6px;
+  background: #fff;
+  color: #202124;
+}
+.sf-demand-src {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  background: #f1f3f4;
+  color: #202124;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  padding: 6px 8px;
+  margin: 0 0 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+}
+.sf-demand-src:hover { background: #e8eaed; }
+.sf-demand-instr {
+  border-radius: 6px;
+  padding: 2px 5px;
+  margin-left: -5px;
+  transition: background-color 0.3s ease;
+}
+.sf-demand-instr.sf-flash { background: #fef7e0; }
+.sf-edit-details { margin-top: 6px; }
+
+/* Shared "your details" mini-form, built by lib/demand.js
+   (same markup as the Gmail panel and popup). */
+.sa-df-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+.sa-df-label { flex: 0 0 44px; color: #5f6368; font-size: 12px; }
+.sa-df-input {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  padding: 7px 8px;
+  font-size: 13px;
+  background: #fff;
+  color: #202124;
+}
+.sa-df-note { color: #5f6368; font-size: 11px; margin: 2px 0; }
+.sa-df-save {
+  background: #1e8e3e;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 4px;
+}
+.sa-df-save:hover { background: #188038; }
+.sa-df-save:disabled { background: #9aa0a6; cursor: default; }
+.sa-df-status { color: #5f6368; font-size: 11px; margin: 6px 0 0; }

@@ -5,11 +5,11 @@
   xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
   xsi:type="MailApp">
   <Id>ee6c078d-0a72-42b1-a98d-246b868f1733</Id>
-  <Version>1.0.0.0</Version>
+  <Version>1.1.0.0</Version>
   <ProviderName>SeraphSheriff</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
-  <DisplayName DefaultValue="Spam Avenger for Outlook (Test)" />
-  <Description DefaultValue="Test skeleton for Spam Avenger for Outlook. Shows what Outlook hands over for the open message and runs the Spam Avenger trace engine on it. Nothing is sent anywhere; the only network calls are RDAP lookups of the sender IP." />
+  <DisplayName DefaultValue="Spam Avenger for Outlook" />
+  <Description DefaultValue="Spam Avenger for Outlook. Traces the open message to the server that really sent it, finds the host's abuse desk, and drafts the complaint — you review and send. Nothing is sent automatically; the only network calls are RDAP lookups of the sender IP. Also drafts formal data-deletion demands under your state's privacy law." />
   <IconUrl DefaultValue="https://seraphsheriff.github.io/spam-avenger-outlook/icon48.png" />
   <HighResolutionIconUrl DefaultValue="https://seraphsheriff.github.io/spam-avenger-outlook/icon128.png" />
   <SupportUrl DefaultValue="https://github.com/SeraphSheriff/spam-avenger" />
@@ -87,7 +87,7 @@
         <bt:String id="paneButtonLabel" DefaultValue="Spam Avenger" />
       </bt:ShortStrings>
       <bt:LongStrings>
-        <bt:String id="paneButtonDesc" DefaultValue="Open the Spam Avenger test pane for this message" />
+        <bt:String id="paneButtonDesc" DefaultValue="Open the Spam Avenger pane for this message" />
       </bt:LongStrings>
     </Resources>
   </VersionOverrides>
