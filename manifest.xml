@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
+  xsi:type="MailApp">
+  <Id>ee6c078d-0a72-42b1-a98d-246b868f1733</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>SeraphSheriff</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="Spam Avenger for Outlook (Test)" />
+  <Description DefaultValue="Test skeleton for Spam Avenger for Outlook. Shows what Outlook hands over for the open message and runs the Spam Avenger trace engine on it. Nothing is sent anywhere; the only network calls are RDAP lookups of the sender IP." />
+  <IconUrl DefaultValue="https://seraphsheriff.github.io/spam-avenger-outlook/icon48.png" />
+  <HighResolutionIconUrl DefaultValue="https://seraphsheriff.github.io/spam-avenger-outlook/icon128.png" />
+  <SupportUrl DefaultValue="https://github.com/SeraphSheriff/spam-avenger" />
+  <AppDomains>
+    <AppDomain>https://seraphsheriff.github.io</AppDomain>
+  </AppDomains>
+  <Hosts>
+    <Host Name="Mailbox" />
+  </Hosts>
+  <Requirements>
+    <Sets>
+      <Set Name="Mailbox" MinVersion="1.8" />
+    </Sets>
+  </Requirements>
+  <FormSettings>
+    <Form xsi:type="ItemRead">
+      <DesktopSettings>
+        <SourceLocation DefaultValue="https://seraphsheriff.github.io/spam-avenger-outlook/taskpane.html" />
+        <RequestedHeight>450</RequestedHeight>
+      </DesktopSettings>
+    </Form>
+  </FormSettings>
+  <Permissions>ReadItem</Permissions>
+  <Rule xsi:type="RuleCollection" Mode="Or">
+    <Rule xsi:type="ItemIs" ItemType="Message" FormType="Read" />
+  </Rule>
+  <DisableEntityHighlighting>false</DisableEntityHighlighting>
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Requirements>
+      <bt:Sets DefaultMinVersion="1.8">
+        <bt:Set Name="Mailbox" MinVersion="1.8" />
+      </bt:Sets>
+    </Requirements>
+    <Hosts>
+      <Host xsi:type="MailHost">
+        <DesktopFormFactor>
+          <FunctionFile resid="functionFile" />
+          <ExtensionPoint xsi:type="MessageReadCommandSurface">
+            <OfficeTab id="TabDefault">
+              <Group id="msgReadGroup">
+                <Label resid="groupLabel" />
+                <Control xsi:type="Button" id="msgReadOpenPaneButton">
+                  <Label resid="paneButtonLabel" />
+                  <Supertip>
+                    <Title resid="paneButtonLabel" />
+                    <Description resid="paneButtonDesc" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="icon16" />
+                    <bt:Image size="32" resid="icon48" />
+                    <bt:Image size="80" resid="icon128" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="taskpaneUrl" />
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="icon16" DefaultValue="https://seraphsheriff.github.io/spam-avenger-outlook/icon16.png" />
+        <bt:Image id="icon48" DefaultValue="https://seraphsheriff.github.io/spam-avenger-outlook/icon48.png" />
+        <bt:Image id="icon128" DefaultValue="https://seraphsheriff.github.io/spam-avenger-outlook/icon128.png" />
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="functionFile" DefaultValue="https://seraphsheriff.github.io/spam-avenger-outlook/commands.html" />
+        <bt:Url id="taskpaneUrl" DefaultValue="https://seraphsheriff.github.io/spam-avenger-outlook/taskpane.html" />
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="groupLabel" DefaultValue="Spam Avenger" />
+        <bt:String id="paneButtonLabel" DefaultValue="Spam Avenger" />
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="paneButtonDesc" DefaultValue="Open the Spam Avenger test pane for this message" />
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

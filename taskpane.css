@@ -1,0 +1,73 @@
+/* Spam Avenger for Outlook (Test) — task pane styles.
+   Deliberately plain: dark background, big readable text. */
+body {
+  background: #1b1b1b;
+  color: #f2f2f2;
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+  margin: 0;
+  padding: 14px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 3px solid #b03a2e;
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+}
+header h1 { font-size: 22px; margin: 0; }
+.subtitle { margin: 2px 0 0 0; color: #c9c9c9; font-size: 14px; }
+
+.note, .card {
+  background: #262626;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.card h2 { font-size: 17px; margin: 0 0 8px 0; color: #ffb3ab; }
+
+button#inspect {
+  background: #b03a2e;
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  font-size: 17px;
+  font-weight: 600;
+  padding: 12px 18px;
+  width: 100%;
+  cursor: pointer;
+}
+button#inspect:hover { background: #c8452c; }
+button#inspect:disabled { background: #666; cursor: wait; }
+
+.hint { color: #c9c9c9; font-size: 14px; }
+
+.field { margin-bottom: 14px; }
+.field h3 {
+  font-size: 15px;
+  margin: 0 0 4px 0;
+  font-weight: 600;
+}
+.field h3 .status { color: #9be29b; font-weight: 400; }
+.field h3 .status.absent { color: #ff9d94; }
+.field pre {
+  background: #101010;
+  border: 1px solid #3d3d3d;
+  border-radius: 6px;
+  padding: 8px;
+  margin: 0;
+  max-height: 300px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12.5px;
+}
+.kv { margin: 0; }
+.kv dt { color: #c9c9c9; font-size: 14px; }
+.kv dd { margin: 0 0 6px 0; font-weight: 600; }
+.big { font-size: 18px; font-weight: 700; }
