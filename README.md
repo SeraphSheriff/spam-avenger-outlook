@@ -58,7 +58,7 @@ Outlook".
 
 | File | What it is |
 |---|---|
-| `taskpane.html` / `.js` / `.css` | The panel (Phase 1, v1.1.2) |
+| `taskpane.html` / `.js` / `.css` | The panel (Phase 1, v1.1.3) |
 | `commands.html` / `.js` | Minimal FunctionFile the manifest requires |
 | `analyze.js` | The Spam Avenger engine (unmodified copy of the Gmail build) |
 | `demand.js` | The data-deletion demand engine (Gmail build; only the storage choke point differs — localStorage instead of chrome.storage) |

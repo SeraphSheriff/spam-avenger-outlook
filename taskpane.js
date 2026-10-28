@@ -1,4 +1,4 @@
-/* Spam Avenger for Outlook — task pane (Phase 1, v1.1.2).
+/* Spam Avenger for Outlook — task pane (Phase 1, v1.1.3).
  *
  * The Gmail addon's panel, rebuilt on Office.js. On open (and on
  * item change) it runs the trace automatically: full internet
@@ -13,7 +13,11 @@
  * (displayNewMessageForm — nothing is ever sent by the add-in),
  * and the Safe Browsing / FTC lanes degrade to "open the form +
  * copy the case details" because an add-in cannot fill in a web
- * form the way a content script can.
+ * form the way a content script can. v1.1.3: the Safe Browsing
+ * lane is a two-step walkthrough (raw URL for the form's URL box,
+ * then an 800-char-budgeted summary for its details box) — the
+ * v1.1.2 single paste left the user fishing the URL out of the
+ * blob, and the form's URL field stayed empty.
  *
  * Every async call is wrapped with a timeout and every failure
  * surfaces as a short user-readable line carrying the version
@@ -22,7 +26,7 @@
 (function () {
   "use strict";
 
-  var VERSION = "1.1.2";
+  var VERSION = "1.1.3";
   var TAG = "v" + VERSION;
 
   function $(id) { return document.getElementById(id); }
@@ -284,6 +288,40 @@
     return L.join("\n");
   }
 
+  // Safe Browsing's details box is small (the Gmail reportfill
+  // lane budgets 800 chars for it), so this lane gets its own
+  // SHORT summary instead of the full case text: who it claims to
+  // be from, subject, the sending IP + network owner, date. NO
+  // link list — the URL itself is step 1 of the walkthrough; any
+  // further links collapse into a "(+N more links…)" tail line.
+  var SB_DETAILS_CAP = 800;
+  var SB_NO_LINKS = "No links found in this message — Safe " +
+    "Browsing needs a URL, so this lane can't report it.";
+  var SB_INSTRUCTIONS = "1. Open the form. 2. Paste the URL in " +
+    "'URL to report'. 3. Paste the details in 'Additional " +
+    "details'. 4. Pick 'This page is not safe' and a threat " +
+    "type, then Submit — Google does the rest.";
+  var FTC_INSTRUCTIONS = "In the form: Report Now → answer the " +
+    "category questions → when you reach the Comments box, click " +
+    "in it and press Ctrl+V → finish and Submit. The Yes/No " +
+    "answers are yours.";
+
+  function sbDetailsText(a) {
+    var L = [];
+    L.push("Spam/phishing report — details collected by Spam Avenger");
+    L.push("Sender: " + (a.from || "unknown"));
+    L.push("Subject: " + (a.subject || "unknown"));
+    if (a.date) L.push("Date: " + a.date);
+    if (a.ip) L.push("Sending IP: " + a.ip);
+    if (a.org) L.push("Network owner: " + a.org);
+    if (a.urls && a.urls.length > 1) {
+      L.push("(+" + (a.urls.length - 1) + " more links in the email)");
+    }
+    var s = L.join("\n");
+    if (s.length > SB_DETAILS_CAP) s = s.slice(0, SB_DETAILS_CAP - 3) + "...";
+    return s;
+  }
+
   function forwardBody(a, bodyText) {
     var L = [];
     L.push("Reporting a phishing/spam message received in Outlook. " +
@@ -473,6 +511,15 @@
     // user at the form with nothing to paste. Now the box is the
     // fallback: if the copy doesn't take, its contents are left
     // selected with a Ctrl+C instruction.
+    // v1.1.3: the Safe Browsing lane no longer reuses that single
+    // box. Field test: one blob of text left the form's required
+    // "URL to report" field empty and made the user fish the URL
+    // out by hand. It now reveals a two-step walkthrough — step 1
+    // is the raw first link alone (the complaint defangs links for
+    // email, but Google's form wants the real URL), step 2 is the
+    // short 800-char-budgeted summary — each with its own copy
+    // button, plus a numbered instruction line. The FTC lane keeps
+    // the single box and gains its own step line under it.
     var caseLabel = h("b", { id: "sf-case-label" }, "");
     var caseTa = h("textarea", { id: "sf-case-text" });
     caseTa.readOnly = true;
@@ -483,6 +530,72 @@
       caseTa.value = caseDetailsText(a);
       caseBox.style.display = "";
     }
+    var ftcInstr = h("p", { "class": "sf-note", id: "sf-ftc-instr" },
+      FTC_INSTRUCTIONS);
+    ftcInstr.style.display = "none";
+
+    // --- Safe Browsing two-step walkthrough (v1.1.3) ---
+    var sbUrlTa = h("textarea", { id: "sf-sb-url" });
+    sbUrlTa.readOnly = true;
+    var sbCopyUrlBtn = h("button", { id: "sf-sb-copy-url",
+      "class": "sf-btn-green", "type": "button" }, "Copy the URL");
+    var sbUrlActions = h("div", { "class": "sf-actions" }, sbCopyUrlBtn);
+    var sbNoLinks = h("p", { "class": "sf-warn" }, SB_NO_LINKS);
+    sbNoLinks.style.display = "none";
+    var sbStep1 = h("div", { "class": "sf-sbstep" },
+      h("b", null, "Step 1 — the URL for Google's 'URL to report' box:"),
+      sbUrlTa, sbUrlActions, sbNoLinks);
+    var sbDetTa = h("textarea", { id: "sf-sb-details" });
+    sbDetTa.readOnly = true;
+    var sbCopyDetBtn = h("button", { id: "sf-sb-copy-details",
+      "class": "sf-btn-green", "type": "button" }, "Copy the details");
+    var sbStep2 = h("div", { "class": "sf-sbstep" },
+      h("b", null, "Step 2 — details for the 'Additional details' box:"),
+      sbDetTa,
+      h("div", { "class": "sf-actions" }, sbCopyDetBtn));
+    var sbWalk = h("div", { "class": "sf-sbwalk" },
+      sbStep1, sbStep2,
+      h("p", { "class": "sf-note" }, SB_INSTRUCTIONS));
+    sbWalk.style.display = "none";
+    function showSbWalk() {
+      sbWalk.style.display = "";
+      if (a.urls && a.urls.length) {
+        // Raw, paste-ready: Google gets the real URL, not the
+        // defanged form the complaint email uses.
+        sbUrlTa.value = a.urls[0];
+        sbUrlTa.style.display = "";
+        sbUrlActions.style.display = "";
+        sbNoLinks.style.display = "none";
+      } else {
+        sbUrlTa.value = "";
+        sbUrlTa.style.display = "none";
+        sbUrlActions.style.display = "none";
+        sbNoLinks.style.display = "";
+      }
+      sbDetTa.value = sbDetailsText(a);
+    }
+    sbCopyUrlBtn.addEventListener("click", function () {
+      copyText(sbUrlTa.value, caseStatus, {
+        selectEl: sbUrlTa,
+        successText: "✓ Copied the URL — in the Safe Browsing " +
+          "form, click 'URL to report' and press Ctrl+V (" + TAG + ").",
+        manualText: "⚠ Copy didn't take — the URL in the Step 1 " +
+          "box above is selected: press Ctrl+C, then paste it " +
+          "into 'URL to report' with Ctrl+V (" + TAG + ")."
+      });
+    });
+    sbCopyDetBtn.addEventListener("click", function () {
+      copyText(sbDetTa.value, caseStatus, {
+        selectEl: sbDetTa,
+        successText: "✓ Copied the details — in the Safe Browsing " +
+          "form, click 'Additional details' and press Ctrl+V (" +
+          TAG + ").",
+        manualText: "⚠ Copy didn't take — the details in the " +
+          "Step 2 box above are selected: press Ctrl+C, then " +
+          "paste them into 'Additional details' with Ctrl+V (" +
+          TAG + ")."
+      });
+    });
 
     var ftcBtn = h("button", { id: "sf-report-ftc",
       "class": "sf-btn-yellow", "type": "button" }, "Report to FTC");
@@ -494,8 +607,10 @@
       // clipboard write needs, copyText's select + Ctrl+C fallback
       // below covers it.
       window.open("https://reportfraud.ftc.gov/", "_blank", "noopener");
+      sbWalk.style.display = "none";
       showCaseBox("Case details for the FTC form — paste these " +
         "into the Comments box:");
+      ftcInstr.style.display = "";
       copyText(caseTa.value, caseStatus, {
         selectEl: caseTa,
         successText: "✓ Copied — the FTC form is open in a new " +
@@ -514,29 +629,22 @@
       "class": "sf-btn-green", "type": "button" },
       "Report to Google Safe Browsing");
     sbBtn.addEventListener("click", function () {
+      // window.open FIRST, same popup-blocker rule as the FTC
+      // lane; the walkthrough reveal runs in the same handler.
+      // Nothing is copied until the user clicks one of the two
+      // step buttons — two different boxes on Google's form need
+      // two different texts, so one auto-copy can't serve both.
       window.open("https://safebrowsing.google.com/safebrowsing/report_phish/",
         "_blank", "noopener");
-      showCaseBox("Case details for the Safe Browsing form:");
-      var firstLink = (a.urls && a.urls.length)
-        ? " The first link in the box is the one to paste into " +
-          "the form's URL box."
-        : "";
-      copyText(caseTa.value, caseStatus, {
-        selectEl: caseTa,
-        successText: "✓ Copied — the Safe Browsing form is open " +
-          "in a new tab: click its URL box and press Ctrl+V, " +
-          "then submit." + firstLink + " Spam Avenger can't fill " +
-          "in web forms from Outlook, so nothing was filled in " +
-          "for you. If nothing pastes, the details stay in the " +
-          "box above — copy them from there.",
-        manualText: "⚠ Copy didn't take — the case details in " +
-          "the box above are selected: press Ctrl+C, then paste " +
-          "them into the Safe Browsing form with Ctrl+V (" +
-          TAG + ")."
-      });
+      caseBox.style.display = "none";
+      ftcInstr.style.display = "none";
+      caseStatus.textContent = "";
+      showSbWalk();
     });
     body.appendChild(h("div", { "class": "sf-actions" }, ftcBtn, sbBtn));
     body.appendChild(caseBox);
+    body.appendChild(ftcInstr);
+    body.appendChild(sbWalk);
     body.appendChild(caseStatus);
 
     // Forward to APWG + CISA: a compose pre-addressed to both
@@ -941,10 +1049,20 @@
   }
 
   // Test hook: lets the Node harness exercise copyText's three
-  // paths with stubbed navigator/document. Inert in the browser
-  // (no module system there).
+  // paths with stubbed navigator/document, and the report-lane
+  // text builders against fixture analysis output. Inert in the
+  // browser (no module system there).
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { copyText: copyText, VERSION: VERSION };
+    module.exports = {
+      copyText: copyText,
+      caseDetailsText: caseDetailsText,
+      sbDetailsText: sbDetailsText,
+      SB_NO_LINKS: SB_NO_LINKS,
+      SB_INSTRUCTIONS: SB_INSTRUCTIONS,
+      FTC_INSTRUCTIONS: FTC_INSTRUCTIONS,
+      SB_DETAILS_CAP: SB_DETAILS_CAP,
+      VERSION: VERSION
+    };
   }
 
   /* ---------- Boot ---------- */
