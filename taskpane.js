@@ -1,4 +1,4 @@
-/* Spam Avenger for Outlook — task pane (Phase 1, v1.2.2).
+/* Spam Avenger for Outlook — task pane (Phase 1, v1.2.3).
  *
  * The Gmail addon's panel, rebuilt on Office.js. On open (and on
  * item change) it runs the trace automatically: full internet
@@ -38,12 +38,15 @@
  * line. The PID details form validates name/email/ZIP on save
  * (see demand.js).
  *
- * v1.2.2: the PID section no longer offers the domain's
+ * v1.2.3: the PID section no longer offers the domain's
  * registration-record contact as a Send-to suggestion (Michael's
  * ruling) — that chip surfaced registrar ABUSE addresses, and a
  * privacy-law deletion demand goes to the company that emailed
  * the user, at the address published on its own website. The
  * RDAP abuse contact stays where it belongs: the complaint lane.
+ * The Report to Microsoft section also trades the v1.2.1 one-liner
+ * for neutral wording that says what Outlook's Report button
+ * actually does — toned down for AppSource review.
  *
  * Every async call is wrapped with a timeout and every failure
  * surfaces as a short user-readable line carrying the version
@@ -52,7 +55,7 @@
 (function () {
   "use strict";
 
-  var VERSION = "1.2.2";
+  var VERSION = "1.2.3";
   var TAG = "v" + VERSION;
 
   function $(id) { return document.getElementById(id); }
@@ -702,12 +705,15 @@
       "pasted in as evidence — you review and click Send."));
     fwdSec.panel.appendChild(h("div", { "class": "sf-actions" }, fwdBtn));
 
-    /* 5 — Report to Microsoft: Michael's own line (v1.2.1),
-     * verbatim — it replaces the longer guidance text. */
+    /* 5 — Report to Microsoft: neutral, store-review-safe
+     * wording (v1.2.3) — what Outlook's own Report button does,
+     * and what it doesn't do. */
     var msSec = accSection("sf-sec-ms", "sf-btn-red", "Report to Microsoft");
     msSec.panel.appendChild(h("p", { "class": "sf-note" },
-      "If you don't want to help anyone but Microsoft, you can " +
-      "use their Report button on the ribbon."));
+      "Outlook's Report button (on the ribbon) sends the message " +
+      "to Microsoft to help improve their spam filters. It doesn't " +
+      "notify the sender's host or anyone who can shut the " +
+      "operation down."));
 
     /* 6 — PID: "Not Spam but still unwanted?" The entire demand
      * flow renders unchanged inside this section's panel (only
@@ -824,7 +830,7 @@
   /* ---------- PID: "Your data in their hands" (demand.js) ------- */
   /* Mirrors the Gmail panel's v1.0.55 demand step: Send-to starts
    * EMPTY in all cases; the user pastes the address published on
-   * the company's own website. v1.2.2 (Michael's ruling): NO
+   * the company's own website. v1.2.3 (Michael's ruling): NO
    * registration-record / registrar-abuse suggestion in this
    * section — a deletion demand goes to the company that emailed
    * the user, never to an abuse desk; the RDAP abuse contact
