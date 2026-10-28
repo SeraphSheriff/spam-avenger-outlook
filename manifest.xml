@@ -5,11 +5,11 @@
   xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
   xsi:type="MailApp">
   <Id>ee6c078d-0a72-42b1-a98d-246b868f1733</Id>
-  <Version>1.1.0.0</Version>
+  <Version>1.1.1.0</Version>
   <ProviderName>SeraphSheriff</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Spam Avenger for Outlook" />
-  <Description DefaultValue="Spam Avenger for Outlook. Traces the open message to the server that really sent it, finds the host's abuse desk, and drafts the complaint — you review and send. Nothing is sent automatically; the only network calls are RDAP lookups of the sender IP. Also drafts formal data-deletion demands under your state's privacy law." />
+  <Description DefaultValue="Spam Avenger for Outlook. Traces the open message to the server that really sent it, finds the host's abuse desk, and drafts the complaint for you to review and send. Also drafts data-deletion demands under your state's privacy law." />
   <IconUrl DefaultValue="https://seraphsheriff.github.io/spam-avenger-outlook/icon48.png" />
   <HighResolutionIconUrl DefaultValue="https://seraphsheriff.github.io/spam-avenger-outlook/icon128.png" />
   <SupportUrl DefaultValue="https://github.com/SeraphSheriff/spam-avenger" />
