@@ -326,3 +326,6 @@ a.sf-ovh-btn:hover { background: #8a5c02; }
 .sa-df-save:hover { background: #188038; }
 .sa-df-save:disabled { background: #9aa0a6; cursor: default; }
 .sa-df-status { color: #5f6368; font-size: 11px; margin: 6px 0 0; }
+/* Validation errors in the details form (Outlook v1.2.1):
+   the save is refused, so the message has to read as one. */
+.sa-df-status.sa-df-error { color: #b3261e; font-weight: 600; font-size: 12px; }

@@ -1,4 +1,4 @@
-/* Spam Avenger for Outlook — task pane (Phase 1, v1.2.0).
+/* Spam Avenger for Outlook — task pane (Phase 1, v1.2.1).
  *
  * The Gmail addon's panel, rebuilt on Office.js. On open (and on
  * item change) it runs the trace automatically: full internet
@@ -27,6 +27,17 @@
  * closes whichever was open. The window.open calls moved off
  * the section toggles into inner "Open the … form" buttons.
  *
+ * v1.2.1: Michael's five live-test fixes. Inside every section
+ * the content comes first and the action buttons sit BELOW it.
+ * The FTC walkthrough now starts with the copy step and has its
+ * own "Copy the case details" button (the Open button only
+ * opens). The complaint section lost its Copy button (same
+ * pattern as Forward — the compose IS the action), and with the
+ * PID copy button also gone, no orange buttons remain, so the
+ * legend drops orange. The Microsoft section is Michael's one
+ * line. The PID details form validates name/email/ZIP on save
+ * (see demand.js).
+ *
  * Every async call is wrapped with a timeout and every failure
  * surfaces as a short user-readable line carrying the version
  * tag — the pane never hangs silently.
@@ -34,7 +45,7 @@
 (function () {
   "use strict";
 
-  var VERSION = "1.2.0";
+  var VERSION = "1.2.1";
   var TAG = "v" + VERSION;
 
   function $(id) { return document.getElementById(id); }
@@ -309,7 +320,9 @@
     "'URL to report'. 3. Paste the details in 'Additional " +
     "details'. 4. Pick 'This page is not safe' and a threat " +
     "type, then Submit — Google does the rest.";
-  var FTC_INSTRUCTIONS = "In the form: Report Now → answer the " +
+  var FTC_INSTRUCTIONS = "First, copy your case details from " +
+    "the box below (the 'Copy the case details' button does it " +
+    "for you). Then in the form: Report Now → answer the " +
     "category questions → when you reach the Comments box, click " +
     "in it and press Ctrl+V → finish and Submit. The Yes/No " +
     "answers are yours.";
@@ -364,7 +377,7 @@
     return L.join("\n");
   }
 
-  /* ---------- Result rendering: the accordion (v1.2.0) -------- */
+  /* ---------- Result rendering: the accordion (v1.2.0+) ------- */
   /* Michael's design call (2026-10-27): an Office add-in can't
    * walk the user ON an external form the way the Gmail content
    * script can, so the pane itself has to stay focused on the ONE
@@ -482,8 +495,10 @@
 
     // Color legend flags, built from what this render actually
     // shows (Gmail v1.0.48 rule: never explain an absent color).
-    // Orange appears only when the Copy complaint button exists.
-    var showOrange = !!a.complaint;
+    // v1.2.1: both orange copy buttons (complaint + PID letter)
+    // were removed at Michael's call, so orange appears nowhere
+    // in the pane and the legend never lists it.
+    var showOrange = false;
 
     /* 1 — the abuse complaint (only when the trace made one) */
     if (a.complaint) {
@@ -508,23 +523,16 @@
         }, "ovhcloud.com/en/abuse"));
         cw.appendChild(ovhNote);
       }
-      var copyBtn = h("button", { id: "sf-copy",
-        "class": "sf-btn-orange", "type": "button" },
-        "Copy complaint — paste it into an email");
+      // v1.2.1: no Copy button here — same pattern as the
+      // Forward section. The compose IS the action; the text box
+      // above is there to read (and remains selectable by hand).
       var compBtn = h("button", { id: "sf-compose",
         "class": "sf-btn-green", "type": "button" },
         "Open in Outlook — just click Send");
-      cw.appendChild(h("div", { "class": "sf-actions" }, copyBtn, compBtn));
+      cw.appendChild(h("div", { "class": "sf-actions" }, compBtn));
       var compStatus = secStatus("sf-comp-status");
       cw.appendChild(compStatus);
       compSec.panel.appendChild(cw);
-      copyBtn.addEventListener("click", function () {
-        copyText(ta.value, compStatus, {
-          selectEl: ta,
-          manualText: "⚠ Copy didn't take — the complaint text " +
-            "above is selected: press Ctrl+C (" + TAG + ")."
-        });
-      });
       compBtn.addEventListener("click", function () {
         openCompose({
           toRecipients: [c.to],
@@ -543,10 +551,13 @@
          "no complaint generated (it would hit the wrong target).")));
     }
 
-    /* 2 — Report to FTC. Expanding the section only shows the
-     * walkthrough; the form itself opens from the inner button —
-     * a direct user click, so popup blockers stay satisfied, and
-     * the case-details copy runs in that same click. */
+    /* 2 — Report to FTC. v1.2.1 layout (Michael's live-test
+     * notes): the instruction line first — and it now STARTS
+     * with the copy step the old line never mentioned — then the
+     * case-details box, then the buttons below both: "Copy the
+     * case details" (green, the shared copyText) and "Open the
+     * FTC form", which now ONLY opens (the v1.2.0 open+copy
+     * coupling is gone — copying is its own explicit step). */
     var ftcSec = accSection("sf-sec-ftc", "sf-btn-yellow", "Report to FTC");
     var caseLabel = h("b", { id: "sf-case-label" },
       "Case details for the FTC form — paste these into the Comments box:");
@@ -555,15 +566,14 @@
     caseTa.value = caseDetailsText(a);
     var caseBox = h("div", { "class": "sf-casebox" }, caseLabel, caseTa);
     var ftcStatus = secStatus("sf-ftc-status");
-    var ftcOpenBtn = h("button", { id: "sf-ftc-open",
-      "class": "sf-btn-yellow", "type": "button" }, "Open the FTC form");
-    ftcOpenBtn.addEventListener("click", function () {
-      window.open("https://reportfraud.ftc.gov/", "_blank", "noopener");
+    var ftcCopyBtn = h("button", { id: "sf-ftc-copy",
+      "class": "sf-btn-green", "type": "button" }, "Copy the case details");
+    ftcCopyBtn.addEventListener("click", function () {
       copyText(caseTa.value, ftcStatus, {
         selectEl: caseTa,
-        successText: "✓ Copied — the FTC form is open in a new " +
-          "tab: click Report Now there, follow the phishing path " +
-          "it offers, click the Comments box and press Ctrl+V. " +
+        successText: "✓ Copied — now switch to the FTC form " +
+          "tab, click Report Now there, follow the path it " +
+          "offers, click the Comments box and press Ctrl+V. " +
           "Spam Avenger can't fill in web forms from Outlook, so " +
           "nothing was filled in for you. If nothing pastes, the " +
           "details stay in the box above — copy them from there.",
@@ -573,19 +583,27 @@
           TAG + ")."
       });
     });
+    var ftcOpenBtn = h("button", { id: "sf-ftc-open",
+      "class": "sf-btn-yellow", "type": "button" }, "Open the FTC form");
+    ftcOpenBtn.addEventListener("click", function () {
+      window.open("https://reportfraud.ftc.gov/", "_blank", "noopener");
+    });
     ftcSec.panel.appendChild(h("p", { "class": "sf-note",
       "id": "sf-ftc-instr" }, FTC_INSTRUCTIONS));
-    ftcSec.panel.appendChild(h("div", { "class": "sf-actions" }, ftcOpenBtn));
     ftcSec.panel.appendChild(caseBox);
+    ftcSec.panel.appendChild(h("div", { "class": "sf-actions" },
+      ftcCopyBtn, ftcOpenBtn));
     ftcSec.panel.appendChild(ftcStatus);
 
     /* 3 — Report to Google Safe Browsing: the two-step
      * walkthrough from v1.1.3 (raw URL for step 1, the
-     * 800-char-budgeted summary for step 2), now in its own
-     * section. The form opens from the inner button only;
-     * nothing is copied until a step's own copy button is
-     * clicked — two different boxes on Google's form need two
-     * different texts, so one auto-copy can't serve both. */
+     * 800-char-budgeted summary for step 2), in its own section.
+     * v1.2.1 layout: ALL content first (step labels + boxes,
+     * then the numbered instruction line), and the three action
+     * buttons together BELOW it — Copy the URL, Copy the
+     * details, Open the form. Two different boxes on Google's
+     * form need two different texts, so nothing auto-copies;
+     * each copy is its own button. */
     var sbSec = accSection("sf-sec-sb", "sf-btn-green",
       "Report to Google Safe Browsing");
     var sbStatus = secStatus("sf-sb-status");
@@ -600,19 +618,17 @@
     sbUrlTa.readOnly = true;
     var sbCopyUrlBtn = h("button", { id: "sf-sb-copy-url",
       "class": "sf-btn-green", "type": "button" }, "Copy the URL");
-    var sbUrlActions = h("div", { "class": "sf-actions" }, sbCopyUrlBtn);
     var sbNoLinks = h("p", { "class": "sf-warn" }, SB_NO_LINKS);
     var sbStep1 = h("div", { "class": "sf-sbstep" },
       h("b", null, "Step 1 — the URL for Google's 'URL to report' box:"),
-      sbUrlTa, sbUrlActions, sbNoLinks);
+      sbUrlTa, sbNoLinks);
     var sbDetTa = h("textarea", { id: "sf-sb-details" });
     sbDetTa.readOnly = true;
     var sbCopyDetBtn = h("button", { id: "sf-sb-copy-details",
       "class": "sf-btn-green", "type": "button" }, "Copy the details");
     var sbStep2 = h("div", { "class": "sf-sbstep" },
       h("b", null, "Step 2 — details for the 'Additional details' box:"),
-      sbDetTa,
-      h("div", { "class": "sf-actions" }, sbCopyDetBtn));
+      sbDetTa);
     var sbWalk = h("div", { "class": "sf-sbwalk" },
       sbStep1, sbStep2,
       h("p", { "class": "sf-note" }, SB_INSTRUCTIONS));
@@ -626,7 +642,7 @@
     } else {
       sbUrlTa.value = "";
       sbUrlTa.style.display = "none";
-      sbUrlActions.style.display = "none";
+      sbCopyUrlBtn.style.display = "none";
       sbNoLinks.style.display = "";
     }
     sbDetTa.value = sbDetailsText(a);
@@ -652,8 +668,9 @@
           TAG + ")."
       });
     });
-    sbSec.panel.appendChild(h("div", { "class": "sf-actions" }, sbOpenBtn));
     sbSec.panel.appendChild(sbWalk);
+    sbSec.panel.appendChild(h("div", { "class": "sf-actions" },
+      sbCopyUrlBtn, sbCopyDetBtn, sbOpenBtn));
     sbSec.panel.appendChild(sbStatus);
 
     /* 4 — Forward phish to APWG + CISA: a compose pre-addressed
@@ -678,15 +695,12 @@
       "pasted in as evidence — you review and click Send."));
     fwdSec.panel.appendChild(h("div", { "class": "sf-actions" }, fwdBtn));
 
-    /* 5 — Report to Microsoft: honest positioning, no fake API
-     * call — Outlook's own Report button is the only route in. */
+    /* 5 — Report to Microsoft: Michael's own line (v1.2.1),
+     * verbatim — it replaces the longer guidance text. */
     var msSec = accSection("sf-sec-ms", "sf-btn-red", "Report to Microsoft");
     msSec.panel.appendChild(h("p", { "class": "sf-note" },
-      "Use Outlook's own Report button: with this message selected, " +
-      "click the shield-shaped Report button on the ribbon (Home tab) " +
-      "and choose Report phishing. That sends the message to Microsoft " +
-      "so their filters learn — it never reaches the sender's host. " +
-      "The abuse complaint section above is the report that does."));
+      "If you don't want to help anyone but Microsoft, you can " +
+      "use their Report button on the ribbon."));
 
     /* 6 — PID: "Not Spam but still unwanted?" The entire demand
      * flow renders unchanged inside this section's panel (only
@@ -997,13 +1011,14 @@
       step.appendChild(pToggle);
       step.appendChild(letterBox);
 
+      // v1.2.1: the Copy demand letter button is gone (Michael's
+      // call) — the compose below is the only send path, same as
+      // the complaint section. The letter preview toggle above
+      // stays for reading.
       var openBtn = h("button", { id: "sf-demand-open",
         "class": "sf-btn-green", "type": "button" },
         "Open in Outlook — just click Send");
-      var copyBtn = h("button", { id: "sf-demand-copy",
-        "class": "sf-btn-orange", "type": "button" },
-        "Copy demand letter");
-      step.appendChild(h("div", { "class": "sf-actions" }, openBtn, copyBtn));
+      step.appendChild(h("div", { "class": "sf-actions" }, openBtn));
       step.appendChild(h("p", { "class": "sf-fine" },
         "Goes out from you: " + det.name + " (" + det.email + ")" +
         (det.state ? ", " + (D.stateName(det.state) || det.state) : "") +
@@ -1043,24 +1058,6 @@
           subject: letter.subject,
           htmlBody: textToHtml(letter.body)
         }, openBtn);
-      });
-      copyBtn.addEventListener("click", function () {
-        if (!letter) refresh();
-        copyText(letterTa.value, null, {
-          selectEl: letterTa,
-          // The letter preview starts hidden; if both copy paths
-          // fail, reveal it so the selection the user is told to
-          // Ctrl+C is actually on screen.
-          onManual: function () {
-            letterBox.style.display = "";
-            pToggle.textContent = "Hide letter ▾";
-            pToggle.setAttribute("aria-expanded", "true");
-          }
-        }).then(function (outcome) {
-          flashLabel(copyBtn, outcome !== "manual" ? "Copied!" :
-            "Copy didn't take — the letter above is selected, " +
-            "press Ctrl+C (" + TAG + ")", 4000);
-        });
       });
     }
 

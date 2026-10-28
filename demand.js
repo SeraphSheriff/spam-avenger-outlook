@@ -345,6 +345,57 @@
               String(d.email || "").trim());
   }
 
+  // --- details-form validation (Outlook copy only, v1.2.1) ----------
+  // Michael's field test, 2026-10-27: the form happily saved an
+  // "email" with no @ in it and an 11-digit "ZIP", and the bad
+  // values flowed straight into a legal letter. The form now
+  // REFUSES to save until all three fields are usable:
+  //   name  — non-empty;
+  //   email — plausible: exactly one @, a non-empty local part,
+  //           a domain containing a dot, no spaces (a sanity
+  //           shape check, not a deliverability proof);
+  //   zip   — exactly 5 digits, or ZIP+4, which normalizes to
+  //           its first five digits for storage.
+  // validateDetails({name, email, zip}) is pure and testable:
+  // {ok:true, value:{name, email, zip}} (name/email trimmed,
+  // zip normalized) or {ok:false, field, error} with a plain
+  // user-facing message naming the field and the fix.
+  function validateEmail(email) {
+    var s = String(email == null ? "" : email).trim();
+    if (!s || /\s/.test(s)) return false;
+    var parts = s.split("@");
+    if (parts.length !== 2) return false;
+    if (!parts[0] || !parts[1]) return false;
+    return parts[1].indexOf(".") !== -1;
+  }
+
+  function normalizeZip(zip) {
+    var m = String(zip == null ? "" : zip).trim()
+      .match(/^(\d{5})(?:-\d{4})?$/);
+    return m ? m[1] : null;
+  }
+
+  function validateDetails(d) {
+    d = d || {};
+    var name = String(d.name || "").trim();
+    var email = String(d.email || "").trim();
+    if (!name) {
+      return { ok: false, field: "name",
+        error: "Add your full name \u2014 the demand has to name you." };
+    }
+    if (!validateEmail(email)) {
+      return { ok: false, field: "email",
+        error: "That email doesn't look right \u2014 it needs an @ " +
+          "and a domain, like you@example.com." };
+    }
+    var zip = normalizeZip(d.zip);
+    if (zip === null) {
+      return { ok: false, field: "zip",
+        error: "ZIP needs to be 5 digits." };
+    }
+    return { ok: true, value: { name: name, email: email, zip: zip } };
+  }
+
   // --- recipient mail-server sanity check (v1.0.53) -------------------
   // The demand's Send-to address comes from the domain's RDAP
   // registration record when it publishes one, or is pasted in by
@@ -838,23 +889,37 @@
     });
 
     saveBtn.addEventListener("click", function () {
+      // v1.2.1 (Outlook): validate BEFORE anything is stored. A
+      // failed field leaves the form open with the user's
+      // entries untouched and shows the fix under the form; the
+      // state note under the ZIP keeps its own (softer) wording
+      // for a well-shaped ZIP that simply has no state-law row.
+      var v = validateDetails({
+        name: nameIn.value, email: emailIn.value, zip: zipIn.value
+      });
+      if (!v.ok) {
+        status.className = "sa-df-status sa-df-error";
+        status.textContent = v.error;
+        var bad = v.field === "name" ? nameIn
+          : v.field === "email" ? emailIn : zipIn;
+        try { bad.focus(); } catch (e) {}
+        return;
+      }
       // The ZIP is the only source of state: derived here, never
       // read from a picker and never carried over from an old
       // stored value. Unresolvable ZIP -> "" -> general letter.
+      // The stored ZIP is the validated, normalized 5-digit one.
       var d = {
-        name: nameIn.value.trim(),
-        email: emailIn.value.trim(),
-        zip: zipIn.value.trim(),
-        state: stateForZip(zipIn.value) || ""
+        name: v.value.name,
+        email: v.value.email,
+        zip: v.value.zip,
+        state: stateForZip(v.value.zip) || ""
       };
       refreshState();
-      if (!d.name || !d.email) {
-        status.textContent = "Add your name and email so the demand can name you.";
-        return;
-      }
       saveBtn.disabled = true;
       saveDetails(d).then(function (ok) {
         saveBtn.disabled = false;
+        status.className = "sa-df-status";
         status.textContent = ok
           ? "Saved \u2713 \u2014 kept only in this browser."
           : "Couldn't save in this browser \u2014 the demand can still be drafted, but you'll re-enter these next time.";
@@ -876,6 +941,9 @@
     loadDetails: loadDetails,
     saveDetails: saveDetails,
     detailsComplete: detailsComplete,
+    validateDetails: validateDetails,
+    validateEmail: validateEmail,
+    normalizeZip: normalizeZip,
     buildDetailsForm: buildDetailsForm,
     mxDomainOf: mxDomainOf,
     checkRecipientMx: checkRecipientMx,
