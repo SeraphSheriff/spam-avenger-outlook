@@ -148,6 +148,45 @@ a.sf-ovh-btn:hover { background: #8a5c02; }
 .sf-links { margin-top: 8px; }
 .sf-fine { color: #5f6368; font-size: 11px; margin-top: 8px; }
 
+/* Accordion (v1.2.0): the pane is a stack of full-width task
+   toggles, everything collapsed on open; one section's panel
+   expands directly below its toggle at a time. Toggle colors
+   carry the same language as the action buttons (green = does
+   the work, yellow = guided steps, red = the plain default). */
+.sf-stack { margin-top: 2px; }
+.sf-acc-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  background: #c0392b;
+  color: #fff;
+}
+.sf-acc-toggle:hover { background: #a93226; }
+.sf-acc-toggle.sf-btn-green { background: #1e8e3e; color: #fff; }
+.sf-acc-toggle.sf-btn-green:hover { background: #188038; }
+.sf-acc-toggle.sf-btn-yellow { background: #9e6a03; color: #fff; }
+.sf-acc-toggle.sf-btn-yellow:hover { background: #8a5c02; }
+.sf-acc-caret { flex: 0 0 auto; font-size: 11px; }
+.sf-acc-panel {
+  border: 1px solid #e8eaed;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: -2px 0 10px;
+  background: #fff;
+}
+.sf-acc-panel .sf-actions:last-child { margin-bottom: 0; }
+.sf-status { min-height: 14px; }
+
 .sf-loading { text-align: center; padding: 18px 0; }
 .sf-spin {
   width: 28px; height: 28px;

@@ -5,7 +5,7 @@
   xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
   xsi:type="MailApp">
   <Id>ee6c078d-0a72-42b1-a98d-246b868f1733</Id>
-  <Version>1.1.3.0</Version>
+  <Version>1.2.0.0</Version>
   <ProviderName>SeraphSheriff</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Spam Avenger for Outlook" />

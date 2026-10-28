@@ -1,4 +1,4 @@
-/* Spam Avenger for Outlook — task pane (Phase 1, v1.1.3).
+/* Spam Avenger for Outlook — task pane (Phase 1, v1.2.0).
  *
  * The Gmail addon's panel, rebuilt on Office.js. On open (and on
  * item change) it runs the trace automatically: full internet
@@ -19,6 +19,14 @@
  * v1.1.2 single paste left the user fishing the URL out of the
  * blob, and the form's URL field stayed empty.
  *
+ * v1.2.0: the pane is an accordion (Michael's design call,
+ * 2026-10-27). Since the add-in can't walk the user ON an
+ * external page, the pane stays focused on the one task being
+ * followed: all sections start collapsed as a stack of buttons;
+ * clicking one expands its instructions + details below it and
+ * closes whichever was open. The window.open calls moved off
+ * the section toggles into inner "Open the … form" buttons.
+ *
  * Every async call is wrapped with a timeout and every failure
  * surfaces as a short user-readable line carrying the version
  * tag — the pane never hangs silently.
@@ -26,7 +34,7 @@
 (function () {
   "use strict";
 
-  var VERSION = "1.1.3";
+  var VERSION = "1.2.0";
   var TAG = "v" + VERSION;
 
   function $(id) { return document.getElementById(id); }
@@ -356,7 +364,21 @@
     return L.join("\n");
   }
 
-  /* ---------- Result rendering (mirrors Gmail renderResult) ----- */
+  /* ---------- Result rendering: the accordion (v1.2.0) -------- */
+  /* Michael's design call (2026-10-27): an Office add-in can't
+   * walk the user ON an external form the way the Gmail content
+   * script can, so the pane itself has to stay focused on the ONE
+   * task being followed. On open, every task is a single button in
+   * a stack with everything collapsed; clicking one expands its
+   * instructions + details directly below it, and opening another
+   * closes the first (strictly one open at a time). The trace
+   * details stay OUTSIDE the accordion, behind their own toggle —
+   * they're reference info, not a task. Nothing auto-opens, and
+   * no window.open happens anywhere except inside the inner
+   * "Open the … form" buttons (a direct user click, so popup
+   * blockers stay satisfied). A fresh trace rebuilds this DOM
+   * from scratch, so a new message always starts all-collapsed
+   * with no leftover per-section state. */
 
   function renderResult(a, bodyText, lookupNote) {
     var body = $("panel-body");
@@ -365,13 +387,14 @@
 
     if (lookupNote) body.appendChild(h("p", { "class": "sf-warn" }, lookupNote));
 
-    // Details start collapsed behind the toggle, exactly like the
-    // Gmail panel (v1.0.36): the panel opens focused on the actions.
+    // Details start collapsed behind their own toggle, exactly
+    // like the Gmail panel (v1.0.36): reference info, not a task,
+    // so this toggle is NOT part of the accordion below.
     var details = h("div", { "class": "sf-details" });
     details.style.display = "none";
     var toggle = h("button", {
       "class": "sf-details-toggle", "type": "button",
-      "aria-expanded": "false"
+      "id": "sf-details-toggle", "aria-expanded": "false"
     }, "Show details ▸");
     toggle.addEventListener("click", function () {
       var open = details.style.display !== "none";
@@ -388,7 +411,7 @@
       body.appendChild(h("p", { "class": "sf-warn" },
         "Couldn't find the sending server in the headers. " +
         "That happens with mailing lists, forwards, and some bulk senders. " +
-        "Nothing to complain to directly — but the report links below still apply."));
+        "Nothing to complain to directly — but the report sections below still apply."));
     } else {
       details.appendChild(mkRow("Sending IP", a.ip, true));
       details.appendChild(mkRow("Server",
@@ -420,14 +443,54 @@
     }
     details.appendChild(linksDiv);
 
+    /* ----- The accordion stack: one focused task at a time ----- */
+    var stack = h("div", { "class": "sf-stack", "id": "sf-stack" });
+    body.appendChild(stack);
+    var currentSection = null;
+    function accSection(id, toggleClass, label) {
+      var caret = h("span", { "class": "sf-acc-caret" }, "▸");
+      var tgl = h("button", {
+        "class": "sf-acc-toggle " + toggleClass, "type": "button",
+        "id": id + "-toggle", "aria-expanded": "false",
+        "aria-controls": id + "-panel"
+      }, caret, label);
+      var panel = h("div", { "class": "sf-acc-panel", "id": id + "-panel" });
+      panel.style.display = "none";
+      var sec = { toggle: tgl, panel: panel };
+      sec.setOpen = function (open) {
+        panel.style.display = open ? "" : "none";
+        caret.textContent = open ? "▾" : "▸";
+        tgl.setAttribute("aria-expanded", open ? "true" : "false");
+      };
+      tgl.addEventListener("click", function () {
+        if (currentSection === sec) {
+          sec.setOpen(false);
+          currentSection = null;
+        } else {
+          if (currentSection) currentSection.setOpen(false);
+          sec.setOpen(true);
+          currentSection = sec;
+        }
+      });
+      stack.appendChild(tgl);
+      stack.appendChild(panel);
+      return sec;
+    }
+    function secStatus(id) {
+      return h("p", { "class": "sf-fine sf-status", "id": id }, "");
+    }
+
     // Color legend flags, built from what this render actually
     // shows (Gmail v1.0.48 rule: never explain an absent color).
-    var showOrange = false;
+    // Orange appears only when the Copy complaint button exists.
+    var showOrange = !!a.complaint;
 
+    /* 1 — the abuse complaint (only when the trace made one) */
     if (a.complaint) {
       var c = a.complaint;
-      var cw = h("div", { "class": "sf-complaint" },
-        h("b", null, "Ready-to-send complaint"));
+      var compSec = accSection("sf-sec-complaint", "sf-btn-green",
+        "Abuse complaint — ready to send");
+      var cw = h("div", { "class": "sf-complaint" });
       var ta = h("textarea", { id: "sf-complaint-text" });
       ta.readOnly = true;
       ta.value = "To: " + c.to + "\nSubject: " + c.subject + "\n\n" + c.body;
@@ -451,14 +514,15 @@
       var compBtn = h("button", { id: "sf-compose",
         "class": "sf-btn-green", "type": "button" },
         "Open in Outlook — just click Send");
-      showOrange = true;
       cw.appendChild(h("div", { "class": "sf-actions" }, copyBtn, compBtn));
-      body.appendChild(cw);
+      var compStatus = secStatus("sf-comp-status");
+      cw.appendChild(compStatus);
+      compSec.panel.appendChild(cw);
       copyBtn.addEventListener("click", function () {
-        copyText(ta.value, null, { selectEl: ta }).then(function (outcome) {
-          flashLabel(copyBtn, outcome !== "manual" ? "Copied!" :
-            "Copy didn't take — the text above is selected, " +
-            "press Ctrl+C (" + TAG + ")", 4000);
+        copyText(ta.value, compStatus, {
+          selectEl: ta,
+          manualText: "⚠ Copy didn't take — the complaint text " +
+            "above is selected: press Ctrl+C (" + TAG + ")."
         });
       });
       compBtn.addEventListener("click", function () {
@@ -469,18 +533,173 @@
         }, compBtn);
       });
     } else if (a.ip && !a.skipComplaint) {
-      body.appendChild(h("p", { "class": "sf-warn" },
+      stack.appendChild(h("p", { "class": "sf-warn" },
         "No published abuse contact for this IP. " +
-        "Report the links below via Google Safe Browsing instead."));
+        "Report the links via Google Safe Browsing instead."));
     } else if (a.skipComplaint) {
-      body.appendChild(h("p", { "class": "sf-warn" },
+      stack.appendChild(h("p", { "class": "sf-warn" },
         a.providerAdvice ||
         ("This came from a big mailbox provider’s own servers — " +
          "no complaint generated (it would hit the wrong target).")));
     }
 
-    // Legend (green + yellow are guaranteed by the report row;
-    // orange only when the Copy button is on screen).
+    /* 2 — Report to FTC. Expanding the section only shows the
+     * walkthrough; the form itself opens from the inner button —
+     * a direct user click, so popup blockers stay satisfied, and
+     * the case-details copy runs in that same click. */
+    var ftcSec = accSection("sf-sec-ftc", "sf-btn-yellow", "Report to FTC");
+    var caseLabel = h("b", { id: "sf-case-label" },
+      "Case details for the FTC form — paste these into the Comments box:");
+    var caseTa = h("textarea", { id: "sf-case-text" });
+    caseTa.readOnly = true;
+    caseTa.value = caseDetailsText(a);
+    var caseBox = h("div", { "class": "sf-casebox" }, caseLabel, caseTa);
+    var ftcStatus = secStatus("sf-ftc-status");
+    var ftcOpenBtn = h("button", { id: "sf-ftc-open",
+      "class": "sf-btn-yellow", "type": "button" }, "Open the FTC form");
+    ftcOpenBtn.addEventListener("click", function () {
+      window.open("https://reportfraud.ftc.gov/", "_blank", "noopener");
+      copyText(caseTa.value, ftcStatus, {
+        selectEl: caseTa,
+        successText: "✓ Copied — the FTC form is open in a new " +
+          "tab: click Report Now there, follow the phishing path " +
+          "it offers, click the Comments box and press Ctrl+V. " +
+          "Spam Avenger can't fill in web forms from Outlook, so " +
+          "nothing was filled in for you. If nothing pastes, the " +
+          "details stay in the box above — copy them from there.",
+        manualText: "⚠ Copy didn't take — the case details in " +
+          "the box above are selected: press Ctrl+C, then paste " +
+          "them into the FTC form's Comments box with Ctrl+V (" +
+          TAG + ")."
+      });
+    });
+    ftcSec.panel.appendChild(h("p", { "class": "sf-note",
+      "id": "sf-ftc-instr" }, FTC_INSTRUCTIONS));
+    ftcSec.panel.appendChild(h("div", { "class": "sf-actions" }, ftcOpenBtn));
+    ftcSec.panel.appendChild(caseBox);
+    ftcSec.panel.appendChild(ftcStatus);
+
+    /* 3 — Report to Google Safe Browsing: the two-step
+     * walkthrough from v1.1.3 (raw URL for step 1, the
+     * 800-char-budgeted summary for step 2), now in its own
+     * section. The form opens from the inner button only;
+     * nothing is copied until a step's own copy button is
+     * clicked — two different boxes on Google's form need two
+     * different texts, so one auto-copy can't serve both. */
+    var sbSec = accSection("sf-sec-sb", "sf-btn-green",
+      "Report to Google Safe Browsing");
+    var sbStatus = secStatus("sf-sb-status");
+    var sbOpenBtn = h("button", { id: "sf-sb-open",
+      "class": "sf-btn-green", "type": "button" },
+      "Open the Safe Browsing form");
+    sbOpenBtn.addEventListener("click", function () {
+      window.open("https://safebrowsing.google.com/safebrowsing/report_phish/",
+        "_blank", "noopener");
+    });
+    var sbUrlTa = h("textarea", { id: "sf-sb-url" });
+    sbUrlTa.readOnly = true;
+    var sbCopyUrlBtn = h("button", { id: "sf-sb-copy-url",
+      "class": "sf-btn-green", "type": "button" }, "Copy the URL");
+    var sbUrlActions = h("div", { "class": "sf-actions" }, sbCopyUrlBtn);
+    var sbNoLinks = h("p", { "class": "sf-warn" }, SB_NO_LINKS);
+    var sbStep1 = h("div", { "class": "sf-sbstep" },
+      h("b", null, "Step 1 — the URL for Google's 'URL to report' box:"),
+      sbUrlTa, sbUrlActions, sbNoLinks);
+    var sbDetTa = h("textarea", { id: "sf-sb-details" });
+    sbDetTa.readOnly = true;
+    var sbCopyDetBtn = h("button", { id: "sf-sb-copy-details",
+      "class": "sf-btn-green", "type": "button" }, "Copy the details");
+    var sbStep2 = h("div", { "class": "sf-sbstep" },
+      h("b", null, "Step 2 — details for the 'Additional details' box:"),
+      sbDetTa,
+      h("div", { "class": "sf-actions" }, sbCopyDetBtn));
+    var sbWalk = h("div", { "class": "sf-sbwalk" },
+      sbStep1, sbStep2,
+      h("p", { "class": "sf-note" }, SB_INSTRUCTIONS));
+    // Populate at render time (the v1.1.3 showSbWalk logic — the
+    // section toggle now owns visibility). Step 1 gets the RAW
+    // first link: the complaint defangs links for email, but
+    // Google's form wants the real URL.
+    if (a.urls && a.urls.length) {
+      sbUrlTa.value = a.urls[0];
+      sbNoLinks.style.display = "none";
+    } else {
+      sbUrlTa.value = "";
+      sbUrlTa.style.display = "none";
+      sbUrlActions.style.display = "none";
+      sbNoLinks.style.display = "";
+    }
+    sbDetTa.value = sbDetailsText(a);
+    sbCopyUrlBtn.addEventListener("click", function () {
+      copyText(sbUrlTa.value, sbStatus, {
+        selectEl: sbUrlTa,
+        successText: "✓ Copied the URL — in the Safe Browsing " +
+          "form, click 'URL to report' and press Ctrl+V (" + TAG + ").",
+        manualText: "⚠ Copy didn't take — the URL in the Step 1 " +
+          "box above is selected: press Ctrl+C, then paste it " +
+          "into 'URL to report' with Ctrl+V (" + TAG + ")."
+      });
+    });
+    sbCopyDetBtn.addEventListener("click", function () {
+      copyText(sbDetTa.value, sbStatus, {
+        selectEl: sbDetTa,
+        successText: "✓ Copied the details — in the Safe Browsing " +
+          "form, click 'Additional details' and press Ctrl+V (" +
+          TAG + ").",
+        manualText: "⚠ Copy didn't take — the details in the " +
+          "Step 2 box above are selected: press Ctrl+C, then " +
+          "paste them into 'Additional details' with Ctrl+V (" +
+          TAG + ")."
+      });
+    });
+    sbSec.panel.appendChild(h("div", { "class": "sf-actions" }, sbOpenBtn));
+    sbSec.panel.appendChild(sbWalk);
+    sbSec.panel.appendChild(sbStatus);
+
+    /* 4 — Forward phish to APWG + CISA: a compose pre-addressed
+     * to both intake desks, carrying the full headers + analysis
+     * + body as pasted evidence (a true .eml attachment is
+     * phase 2). The compose opens from the inner button. */
+    var fwdSec = accSection("sf-sec-fwd", "sf-btn-green",
+      "Forward phish to APWG + CISA");
+    var fwdBtn = h("button", { id: "sf-fwd-phish",
+      "class": "sf-btn-green", "type": "button" },
+      "Open the forwarded email");
+    fwdBtn.addEventListener("click", function () {
+      openCompose({
+        toRecipients: ["reportphishing@apwg.org", "contact@cisa.dhs.gov"],
+        subject: "Fwd: " + (a.subject || "(no subject)"),
+        htmlBody: textToHtml(forwardBody(a, bodyText))
+      }, fwdBtn);
+    });
+    fwdSec.panel.appendChild(h("p", { "class": "sf-note" },
+      "Opens a new email addressed to reportphishing@apwg.org and " +
+      "contact@cisa.dhs.gov with the full headers and analysis " +
+      "pasted in as evidence — you review and click Send."));
+    fwdSec.panel.appendChild(h("div", { "class": "sf-actions" }, fwdBtn));
+
+    /* 5 — Report to Microsoft: honest positioning, no fake API
+     * call — Outlook's own Report button is the only route in. */
+    var msSec = accSection("sf-sec-ms", "sf-btn-red", "Report to Microsoft");
+    msSec.panel.appendChild(h("p", { "class": "sf-note" },
+      "Use Outlook's own Report button: with this message selected, " +
+      "click the shield-shaped Report button on the ribbon (Home tab) " +
+      "and choose Report phishing. That sends the message to Microsoft " +
+      "so their filters learn — it never reaches the sender's host. " +
+      "The abuse complaint section above is the report that does."));
+
+    /* 6 — PID: "Not Spam but still unwanted?" The entire demand
+     * flow renders unchanged inside this section's panel (only
+     * when demand.js is present, as before). */
+    var Demand = (typeof window !== "undefined") ? window.SpamDemand : null;
+    if (Demand) {
+      var pidSec = accSection("sf-sec-pid", "sf-btn-yellow",
+        "Not Spam but still unwanted?");
+      renderDemandZone(pidSec.panel, a);
+    }
+
+    // Legend — one compact line under the stack, built from the
+    // colors this render actually shows.
     var legend = h("p", { "class": "sf-legend" }, "Button colors: ");
     var legendEntries = [
       ["sf-dot-green", " green — Spam Avenger does the work; you just review and send."],
@@ -497,193 +716,8 @@
     });
     body.appendChild(legend);
 
-    body.appendChild(h("div", { "class": "sf-links" },
-      h("b", null, "Also report it: ")));
-    var caseStatus = h("p", { "class": "sf-fine", id: "sf-case-status" }, "");
-
-    // Safe Browsing / FTC, degraded per the port sketch: an add-in
-    // can't fill in a web form, so the button opens the form AND
-    // copies the case details — the guidance line says exactly
-    // what to paste where. No autofill is claimed anywhere.
-    // v1.1.2: the case details ALSO land in a visible box in the
-    // pane BEFORE the copy runs, and stay there — the v1.1.1
-    // clipboard write silently failed in the webview, leaving the
-    // user at the form with nothing to paste. Now the box is the
-    // fallback: if the copy doesn't take, its contents are left
-    // selected with a Ctrl+C instruction.
-    // v1.1.3: the Safe Browsing lane no longer reuses that single
-    // box. Field test: one blob of text left the form's required
-    // "URL to report" field empty and made the user fish the URL
-    // out by hand. It now reveals a two-step walkthrough — step 1
-    // is the raw first link alone (the complaint defangs links for
-    // email, but Google's form wants the real URL), step 2 is the
-    // short 800-char-budgeted summary — each with its own copy
-    // button, plus a numbered instruction line. The FTC lane keeps
-    // the single box and gains its own step line under it.
-    var caseLabel = h("b", { id: "sf-case-label" }, "");
-    var caseTa = h("textarea", { id: "sf-case-text" });
-    caseTa.readOnly = true;
-    var caseBox = h("div", { "class": "sf-casebox" }, caseLabel, caseTa);
-    caseBox.style.display = "none";
-    function showCaseBox(label) {
-      caseLabel.textContent = label;
-      caseTa.value = caseDetailsText(a);
-      caseBox.style.display = "";
-    }
-    var ftcInstr = h("p", { "class": "sf-note", id: "sf-ftc-instr" },
-      FTC_INSTRUCTIONS);
-    ftcInstr.style.display = "none";
-
-    // --- Safe Browsing two-step walkthrough (v1.1.3) ---
-    var sbUrlTa = h("textarea", { id: "sf-sb-url" });
-    sbUrlTa.readOnly = true;
-    var sbCopyUrlBtn = h("button", { id: "sf-sb-copy-url",
-      "class": "sf-btn-green", "type": "button" }, "Copy the URL");
-    var sbUrlActions = h("div", { "class": "sf-actions" }, sbCopyUrlBtn);
-    var sbNoLinks = h("p", { "class": "sf-warn" }, SB_NO_LINKS);
-    sbNoLinks.style.display = "none";
-    var sbStep1 = h("div", { "class": "sf-sbstep" },
-      h("b", null, "Step 1 — the URL for Google's 'URL to report' box:"),
-      sbUrlTa, sbUrlActions, sbNoLinks);
-    var sbDetTa = h("textarea", { id: "sf-sb-details" });
-    sbDetTa.readOnly = true;
-    var sbCopyDetBtn = h("button", { id: "sf-sb-copy-details",
-      "class": "sf-btn-green", "type": "button" }, "Copy the details");
-    var sbStep2 = h("div", { "class": "sf-sbstep" },
-      h("b", null, "Step 2 — details for the 'Additional details' box:"),
-      sbDetTa,
-      h("div", { "class": "sf-actions" }, sbCopyDetBtn));
-    var sbWalk = h("div", { "class": "sf-sbwalk" },
-      sbStep1, sbStep2,
-      h("p", { "class": "sf-note" }, SB_INSTRUCTIONS));
-    sbWalk.style.display = "none";
-    function showSbWalk() {
-      sbWalk.style.display = "";
-      if (a.urls && a.urls.length) {
-        // Raw, paste-ready: Google gets the real URL, not the
-        // defanged form the complaint email uses.
-        sbUrlTa.value = a.urls[0];
-        sbUrlTa.style.display = "";
-        sbUrlActions.style.display = "";
-        sbNoLinks.style.display = "none";
-      } else {
-        sbUrlTa.value = "";
-        sbUrlTa.style.display = "none";
-        sbUrlActions.style.display = "none";
-        sbNoLinks.style.display = "";
-      }
-      sbDetTa.value = sbDetailsText(a);
-    }
-    sbCopyUrlBtn.addEventListener("click", function () {
-      copyText(sbUrlTa.value, caseStatus, {
-        selectEl: sbUrlTa,
-        successText: "✓ Copied the URL — in the Safe Browsing " +
-          "form, click 'URL to report' and press Ctrl+V (" + TAG + ").",
-        manualText: "⚠ Copy didn't take — the URL in the Step 1 " +
-          "box above is selected: press Ctrl+C, then paste it " +
-          "into 'URL to report' with Ctrl+V (" + TAG + ")."
-      });
-    });
-    sbCopyDetBtn.addEventListener("click", function () {
-      copyText(sbDetTa.value, caseStatus, {
-        selectEl: sbDetTa,
-        successText: "✓ Copied the details — in the Safe Browsing " +
-          "form, click 'Additional details' and press Ctrl+V (" +
-          TAG + ").",
-        manualText: "⚠ Copy didn't take — the details in the " +
-          "Step 2 box above are selected: press Ctrl+C, then " +
-          "paste them into 'Additional details' with Ctrl+V (" +
-          TAG + ")."
-      });
-    });
-
-    var ftcBtn = h("button", { id: "sf-report-ftc",
-      "class": "sf-btn-yellow", "type": "button" }, "Report to FTC");
-    ftcBtn.addEventListener("click", function () {
-      // Order matters: window.open goes FIRST, synchronously in
-      // the click handler, because popup blockers eat a tab opened
-      // after any await. The box + copy run right after, in the
-      // same handler — and if opening the tab steals the focus the
-      // clipboard write needs, copyText's select + Ctrl+C fallback
-      // below covers it.
-      window.open("https://reportfraud.ftc.gov/", "_blank", "noopener");
-      sbWalk.style.display = "none";
-      showCaseBox("Case details for the FTC form — paste these " +
-        "into the Comments box:");
-      ftcInstr.style.display = "";
-      copyText(caseTa.value, caseStatus, {
-        selectEl: caseTa,
-        successText: "✓ Copied — the FTC form is open in a new " +
-          "tab: click Report Now there, follow the phishing path " +
-          "it offers, click the Comments box and press Ctrl+V. " +
-          "Spam Avenger can't fill in web forms from Outlook, so " +
-          "nothing was filled in for you. If nothing pastes, the " +
-          "details stay in the box above — copy them from there.",
-        manualText: "⚠ Copy didn't take — the case details in " +
-          "the box above are selected: press Ctrl+C, then paste " +
-          "them into the FTC form's Comments box with Ctrl+V (" +
-          TAG + ")."
-      });
-    });
-    var sbBtn = h("button", { id: "sf-report-sb",
-      "class": "sf-btn-green", "type": "button" },
-      "Report to Google Safe Browsing");
-    sbBtn.addEventListener("click", function () {
-      // window.open FIRST, same popup-blocker rule as the FTC
-      // lane; the walkthrough reveal runs in the same handler.
-      // Nothing is copied until the user clicks one of the two
-      // step buttons — two different boxes on Google's form need
-      // two different texts, so one auto-copy can't serve both.
-      window.open("https://safebrowsing.google.com/safebrowsing/report_phish/",
-        "_blank", "noopener");
-      caseBox.style.display = "none";
-      ftcInstr.style.display = "none";
-      caseStatus.textContent = "";
-      showSbWalk();
-    });
-    body.appendChild(h("div", { "class": "sf-actions" }, ftcBtn, sbBtn));
-    body.appendChild(caseBox);
-    body.appendChild(ftcInstr);
-    body.appendChild(sbWalk);
-    body.appendChild(caseStatus);
-
-    // Forward to APWG + CISA: a compose pre-addressed to both
-    // intake desks, carrying the full headers + analysis + body
-    // as pasted evidence (a true .eml attachment is phase 2).
-    var fwdBtn = h("button", { id: "sf-fwd-phish",
-      "class": "sf-btn-green", "type": "button" },
-      "Forward phish to APWG + CISA");
-    fwdBtn.addEventListener("click", function () {
-      openCompose({
-        toRecipients: ["reportphishing@apwg.org", "contact@cisa.dhs.gov"],
-        subject: "Fwd: " + (a.subject || "(no subject)"),
-        htmlBody: textToHtml(forwardBody(a, bodyText))
-      }, fwdBtn);
-    });
-    body.appendChild(h("div", { "class": "sf-actions" }, fwdBtn));
-
-    // Report to Microsoft — honest positioning, no fake API call:
-    // Outlook's own Report button is the only route to Microsoft.
-    var msGuide = h("p", { "class": "sf-note" },
-      "Use Outlook's own Report button: with this message selected, " +
-      "click the shield-shaped Report button on the ribbon (Home tab) " +
-      "and choose Report phishing. That sends the message to Microsoft " +
-      "so their filters learn — it never reaches the sender's host. " +
-      "The complaint at the top of this panel is the report that does.");
-    msGuide.style.display = "none";
-    var msBtn = h("button", { id: "sf-report-ms", "type": "button" },
-      "Report to Microsoft");
-    msBtn.addEventListener("click", function () {
-      var open = msGuide.style.display !== "none";
-      msGuide.style.display = open ? "none" : "";
-    });
-    body.appendChild(h("div", { "class": "sf-actions" }, msBtn));
-    body.appendChild(msGuide);
-
     body.appendChild(h("p", { "class": "sf-fine" },
       "Nothing is sent automatically. You review and send the complaint yourself."));
-
-    renderDemandZone(body, a);
   }
 
   /* ---------- The trace ---------- */
@@ -782,27 +816,15 @@
     "and your data gone, this drafts a formal deletion demand " +
     "using your state's privacy law.";
 
-  function renderDemandZone(body, a) {
+  // v1.2.0: renders into the PID accordion section's panel —
+  // the section toggle replaced the old bottom-of-pane "fight"
+  // toggle; the flow inside is unchanged.
+  function renderDemandZone(panel, a) {
     var D = (typeof window !== "undefined") ? window.SpamDemand : null;
     if (!D) return;
 
-    var demandBody = h("div", { "class": "sf-demand-body" });
-    demandBody.style.display = "none";
     var wrap = h("div", { "class": "sf-demand" });
-    demandBody.appendChild(wrap);
-
-    var fightGlyph = document.createTextNode("? ▸");
-    var fightToggle = h("button", {
-      "class": "sf-details-toggle sf-fight-toggle",
-      "type": "button", "aria-expanded": "false"
-    }, "Not Spam but still ", h("b", null, "unwanted"), fightGlyph);
-    fightToggle.addEventListener("click", function () {
-      var open = demandBody.style.display !== "none";
-      demandBody.style.display = open ? "none" : "";
-      fightGlyph.textContent = open ? "? ▸" : "? ▾";
-      fightToggle.setAttribute("aria-expanded", open ? "false" : "true");
-    });
-    body.appendChild(h("div", { "class": "sf-fight" }, fightToggle, demandBody));
+    panel.appendChild(wrap);
 
     function renderDetailsForm() {
       clearEl(wrap);
@@ -1061,7 +1083,8 @@
       SB_INSTRUCTIONS: SB_INSTRUCTIONS,
       FTC_INSTRUCTIONS: FTC_INSTRUCTIONS,
       SB_DETAILS_CAP: SB_DETAILS_CAP,
-      VERSION: VERSION
+      VERSION: VERSION,
+      _test: { renderResult: renderResult, runTrace: runTrace }
     };
   }
 

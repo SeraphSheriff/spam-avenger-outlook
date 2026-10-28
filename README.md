@@ -8,18 +8,22 @@ running in Outlook on Windows, Mac, and the web.
 Open a message, click **Spam Avenger**, and the pane traces the message
 to the server that really sent it: origin IP, host, network owner, the
 abuse desk's published contact, the red flags, and the links in the
-body. Then, in the Gmail panel's order:
+body. The pane is an accordion (v1.2.0): every task starts as one
+collapsed button in a stack, and clicking it expands that task's
+instructions and details — one task open at a time, so the pane
+stays focused on what you're doing.
 
-- **Ready-to-send complaint** — *Open in Outlook* opens a compose
-  pre-filled to the abuse desk (review and send it yourself; nothing
-  is ever sent automatically), or *Copy complaint* puts it on the
-  clipboard.
-- **Also report it** — *Report to FTC* and *Report to Google Safe
-  Browsing* open the form and copy the case details for pasting (an
-  add-in can't fill in a web form, and the panel says so), *Forward
-  phish to APWG + CISA* opens a compose to both intake desks carrying
-  the full headers and evidence, and *Report to Microsoft* points at
-  Outlook's own Report button.
+- **Abuse complaint — ready to send** — *Open in Outlook* opens a
+  compose pre-filled to the abuse desk (review and send it yourself;
+  nothing is ever sent automatically), or *Copy complaint* puts it
+  on the clipboard.
+- **Report it** — *Report to FTC* and *Report to Google Safe
+  Browsing* walk you through the form from inside their sections:
+  the "Open the … form" button opens the form and the case details
+  are copied for pasting (an add-in can't fill in a web form, and
+  the panel says so). *Forward phish to APWG + CISA* opens a compose
+  to both intake desks carrying the full headers and evidence, and
+  *Report to Microsoft* points at Outlook's own Report button.
 - **Not Spam but still unwanted?** — drafts a formal data-deletion
   demand under your state's privacy law (lib/demand.js, the same
   letter engine as the Gmail version). Your details are stored only
@@ -58,7 +62,7 @@ Outlook".
 
 | File | What it is |
 |---|---|
-| `taskpane.html` / `.js` / `.css` | The panel (Phase 1, v1.1.3) |
+| `taskpane.html` / `.js` / `.css` | The panel (Phase 1, v1.2.0 — accordion layout: one focused task expanded at a time) |
 | `commands.html` / `.js` | Minimal FunctionFile the manifest requires |
 | `analyze.js` | The Spam Avenger engine (unmodified copy of the Gmail build) |
 | `demand.js` | The data-deletion demand engine (Gmail build; only the storage choke point differs — localStorage instead of chrome.storage) |
