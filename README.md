@@ -8,7 +8,7 @@ running in Outlook on Windows, Mac, and the web.
 Open a message, click **Spam Avenger**, and the pane traces the message
 to the server that really sent it: origin IP, host, network owner, the
 abuse desk's published contact, the red flags, and the links in the
-body. The pane is an accordion (v1.2.1): every task starts as one
+body. The pane is an accordion (v1.2.2): every task starts as one
 collapsed button in a stack, and clicking it expands that task's
 instructions and details — one task open at a time, so the pane
 stays focused on what you're doing.
@@ -61,7 +61,7 @@ Outlook".
 
 | File | What it is |
 |---|---|
-| `taskpane.html` / `.js` / `.css` | The panel (Phase 1, v1.2.1 — accordion layout: one focused task expanded at a time) |
+| `taskpane.html` / `.js` / `.css` | The panel (Phase 1, v1.2.2 — accordion layout: one focused task expanded at a time) |
 | `commands.html` / `.js` | Minimal FunctionFile the manifest requires |
 | `analyze.js` | The Spam Avenger engine (unmodified copy of the Gmail build) |
 | `demand.js` | The data-deletion demand engine (Gmail build; only the storage choke point differs — localStorage instead of chrome.storage) |

@@ -271,22 +271,6 @@ a.sf-ovh-btn:hover { background: #8a5c02; }
   background: #fff;
   color: #202124;
 }
-.sf-demand-src {
-  display: block;
-  width: 100%;
-  box-sizing: border-box;
-  background: #f1f3f4;
-  color: #202124;
-  border: 1px solid #dadce0;
-  border-radius: 8px;
-  padding: 6px 8px;
-  margin: 0 0 6px;
-  font-size: 12px;
-  line-height: 1.45;
-  text-align: left;
-  cursor: pointer;
-}
-.sf-demand-src:hover { background: #e8eaed; }
 .sf-demand-instr {
   border-radius: 6px;
   padding: 2px 5px;

@@ -1,4 +1,4 @@
-/* Spam Avenger for Outlook — task pane (Phase 1, v1.2.1).
+/* Spam Avenger for Outlook — task pane (Phase 1, v1.2.2).
  *
  * The Gmail addon's panel, rebuilt on Office.js. On open (and on
  * item change) it runs the trace automatically: full internet
@@ -38,6 +38,13 @@
  * line. The PID details form validates name/email/ZIP on save
  * (see demand.js).
  *
+ * v1.2.2: the PID section no longer offers the domain's
+ * registration-record contact as a Send-to suggestion (Michael's
+ * ruling) — that chip surfaced registrar ABUSE addresses, and a
+ * privacy-law deletion demand goes to the company that emailed
+ * the user, at the address published on its own website. The
+ * RDAP abuse contact stays where it belongs: the complaint lane.
+ *
  * Every async call is wrapped with a timeout and every failure
  * surfaces as a short user-readable line carrying the version
  * tag — the pane never hangs silently.
@@ -45,7 +52,7 @@
 (function () {
   "use strict";
 
-  var VERSION = "1.2.1";
+  var VERSION = "1.2.2";
   var TAG = "v" + VERSION;
 
   function $(id) { return document.getElementById(id); }
@@ -816,11 +823,14 @@
 
   /* ---------- PID: "Your data in their hands" (demand.js) ------- */
   /* Mirrors the Gmail panel's v1.0.55 demand step: Send-to starts
-   * EMPTY in all cases; the sender domain's RDAP registration
-   * contact is offered as ONE clickable suggestion, never
-   * auto-filled; otherwise the user pastes the address published
-   * on the company's own website. The letter is always addressed
-   * to the company behind the SENDER domain. Nothing auto-sends. */
+   * EMPTY in all cases; the user pastes the address published on
+   * the company's own website. v1.2.2 (Michael's ruling): NO
+   * registration-record / registrar-abuse suggestion in this
+   * section — a deletion demand goes to the company that emailed
+   * the user, never to an abuse desk; the RDAP abuse contact
+   * belongs to the complaint lane only. The letter is always
+   * addressed to the company behind the SENDER domain. Nothing
+   * auto-sends. */
 
   var EXPLAINER = "The buttons above are for strangers and " +
     "scammers. This one is for a company you once dealt with — " +
@@ -857,8 +867,6 @@
       wrap.appendChild(h("b", null, "Your data in their hands"));
       wrap.appendChild(h("p", { "class": "sf-demand-intro" }, EXPLAINER));
       var senderDom = D.registrableDomain(a.senderDomain || "");
-      var rdapState = senderDom ? "pending" : "none";
-      var stepOpen = false;
       var step = h("div", { "class": "sf-demand-step" });
       step.style.display = "none";
       var draftBtn = h("button", { id: "sf-demand-draft",
@@ -871,16 +879,9 @@
       draftBtn.addEventListener("click", function () {
         var open = step.style.display !== "none";
         step.style.display = open ? "none" : "";
-        stepOpen = !open;
         draftBtn.textContent = open ? "Draft a data-deletion demand"
           : "Hide the demand ▾";
-        if (!open) {
-          if (rdapState === "pending") {
-            setMx("muted", "Looking up the domain's registration contact…");
-          } else {
-            runMxCheck();
-          }
-        }
+        if (!open) runMxCheck();
       });
 
       step.appendChild(h("div", { "class": "sf-row" },
@@ -891,20 +892,6 @@
         "type": "text", "aria-label": "Demand recipient" });
       toField.placeholder = "Paste the address from their website";
       step.appendChild(toField);
-
-      // RDAP suggestion row — hidden until the registration lookup
-      // lands a contact; clicking it is the only way a record
-      // contact reaches the field.
-      var rdapContact = null;
-      var srcEl = h("button", { "class": "sf-demand-src", "type": "button" });
-      srcEl.style.display = "none";
-      srcEl.addEventListener("click", function () {
-        if (!rdapContact) return;
-        toField.value = rdapContact.email;
-        refresh();
-        runMxCheck();
-      });
-      step.appendChild(srcEl);
 
       // Advisory mail-server sanity check under the Send-to field
       // (never blocks the compose button).
@@ -971,25 +958,6 @@
         instrFlashTimer = setTimeout(function () {
           instrEl.classList.remove("sf-flash");
         }, 1800);
-      }
-
-      if (senderDom && D.fetchRegistrationContact) {
-        D.fetchRegistrationContact(senderDom).then(function (found) {
-          rdapState = found ? "found" : "none";
-          if (found) {
-            rdapContact = found;
-            clearEl(srcEl);
-            srcEl.appendChild(document.createTextNode(
-              "Registration record lists: " + found.email +
-              " (" + found.role +
-              (found.org ? " — " + found.org : "") + ") · "));
-            srcEl.appendChild(h("b", null, "Use this address"));
-            srcEl.style.display = "";
-          }
-          if (stepOpen && !toField.value.trim()) setMx("", "");
-        });
-      } else {
-        rdapState = "none";
       }
 
       var letterBox = h("div", {});
