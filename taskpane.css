@@ -82,6 +82,26 @@ body {
 .sf-complaint textarea { height: 130px; }
 .sf-demand textarea { height: 190px; }
 
+/* Case-details box for the FTC / Safe Browsing lanes (v1.1.2):
+   the text stays visible in the pane so it's still there to
+   copy by hand if the clipboard write doesn't take. */
+.sf-casebox { margin: 8px 0 2px; }
+.sf-casebox > b { display: block; margin-bottom: 2px; }
+.sf-casebox textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: monospace;
+  font-size: 11px;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  padding: 8px;
+  margin: 6px 0;
+  height: 110px;
+  resize: vertical;
+  background: #fff;
+  color: #202124;
+}
+
 .sf-actions { display: flex; gap: 8px; margin-bottom: 6px; }
 .sf-actions button {
   flex: 1;

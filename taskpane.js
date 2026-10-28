@@ -1,4 +1,4 @@
-/* Spam Avenger for Outlook — task pane (Phase 1, v1.1.1).
+/* Spam Avenger for Outlook — task pane (Phase 1, v1.1.2).
  *
  * The Gmail addon's panel, rebuilt on Office.js. On open (and on
  * item change) it runs the trace automatically: full internet
@@ -22,7 +22,7 @@
 (function () {
   "use strict";
 
-  var VERSION = "1.1.0";
+  var VERSION = "1.1.2";
   var TAG = "v" + VERSION;
 
   function $(id) { return document.getElementById(id); }
@@ -76,16 +76,72 @@
       esc(text) + "</pre>";
   }
 
-  // Clipboard with the Gmail panel's fallback shape: async
-  // clipboard API first, caller-supplied legacy fallback second.
-  function copyText(text, legacyFallback) {
-    function legacy() {
-      try { return legacyFallback ? !!legacyFallback() : false; }
-      catch (e) { return false; }
+  // THE shared clipboard helper — every copy action in the pane
+  // goes through here. The async clipboard API is unreliable
+  // inside the Office add-in webview (v1.1.1 field result: the
+  // FTC case-details copy silently never landed), so a copy is
+  // only ever CLAIMED after one of the real paths worked:
+  //   "api"    navigator.clipboard.writeText resolved
+  //   "exec"   temp textarea + document.execCommand("copy")
+  //   "manual" both failed — opts.onManual() runs (callers use it
+  //            to reveal the text on screen), opts.selectEl's
+  //            contents are selected, and the status line tells
+  //            the user to press Ctrl+C. Never a fake "Copied!".
+  // statusEl (optional) receives the outcome line:
+  // opts.successText on api/exec, opts.manualText on manual.
+  function copyText(text, statusEl, opts) {
+    opts = opts || {};
+    function say(msg) {
+      if (statusEl) { try { statusEl.textContent = msg; } catch (e) {} }
     }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
+    function manual() {
+      if (opts.onManual) { try { opts.onManual(); } catch (e) {} }
+      var el = opts.selectEl || null;
+      if (el) {
+        try { if (el.focus) el.focus(); } catch (e) {}
+        try {
+          if (typeof el.select === "function") el.select();
+          else if (el.setSelectionRange) {
+            el.setSelectionRange(0, String(el.value || "").length);
+          }
+        } catch (e) {}
+      }
+      say(opts.manualText ||
+        "⚠ Copy didn't take — the text above is selected, " +
+        "press Ctrl+C (" + TAG + ").");
+      return "manual";
+    }
+    function legacy() {
+      var tmp = null;
+      try {
+        tmp = document.createElement("textarea");
+        tmp.value = text;
+        tmp.setAttribute("readonly", "");
+        tmp.style.position = "absolute";
+        tmp.style.left = "-9999px";
+        tmp.style.top = "0";
+        document.body.appendChild(tmp);
+        tmp.select();
+        var ok = false;
+        try { ok = !!document.execCommand("copy"); } catch (e) { ok = false; }
+        document.body.removeChild(tmp);
+        if (ok) {
+          say(opts.successText || "✓ Copied (" + TAG + ")");
+          return "exec";
+        }
+        return manual();
+      } catch (e) {
+        if (tmp && tmp.parentNode) {
+          try { tmp.parentNode.removeChild(tmp); } catch (e2) {}
+        }
+        return manual();
+      }
+    }
+    if (typeof navigator !== "undefined" && navigator.clipboard &&
+        typeof navigator.clipboard.writeText === "function") {
       return navigator.clipboard.writeText(text).then(function () {
-        return true;
+        say(opts.successText || "✓ Copied (" + TAG + ")");
+        return "api";
       }, function () { return legacy(); });
     }
     return Promise.resolve(legacy());
@@ -361,12 +417,10 @@
       cw.appendChild(h("div", { "class": "sf-actions" }, copyBtn, compBtn));
       body.appendChild(cw);
       copyBtn.addEventListener("click", function () {
-        copyText(ta.value, function () {
-          ta.select();
-          try { return document.execCommand("copy"); } catch (e) { return false; }
-        }).then(function (ok) {
-          flashLabel(copyBtn, ok ? "Copied!" :
-            "Couldn't copy — select the text above and press Ctrl+C", 2500);
+        copyText(ta.value, null, { selectEl: ta }).then(function (outcome) {
+          flashLabel(copyBtn, outcome !== "manual" ? "Copied!" :
+            "Copy didn't take — the text above is selected, " +
+            "press Ctrl+C (" + TAG + ")", 4000);
         });
       });
       compBtn.addEventListener("click", function () {
@@ -408,26 +462,52 @@
     body.appendChild(h("div", { "class": "sf-links" },
       h("b", null, "Also report it: ")));
     var caseStatus = h("p", { "class": "sf-fine", id: "sf-case-status" }, "");
-    function setCaseStatus(msg) {
-      try { caseStatus.textContent = msg; } catch (e) {}
-    }
 
     // Safe Browsing / FTC, degraded per the port sketch: an add-in
     // can't fill in a web form, so the button opens the form AND
     // copies the case details — the guidance line says exactly
     // what to paste where. No autofill is claimed anywhere.
+    // v1.1.2: the case details ALSO land in a visible box in the
+    // pane BEFORE the copy runs, and stay there — the v1.1.1
+    // clipboard write silently failed in the webview, leaving the
+    // user at the form with nothing to paste. Now the box is the
+    // fallback: if the copy doesn't take, its contents are left
+    // selected with a Ctrl+C instruction.
+    var caseLabel = h("b", { id: "sf-case-label" }, "");
+    var caseTa = h("textarea", { id: "sf-case-text" });
+    caseTa.readOnly = true;
+    var caseBox = h("div", { "class": "sf-casebox" }, caseLabel, caseTa);
+    caseBox.style.display = "none";
+    function showCaseBox(label) {
+      caseLabel.textContent = label;
+      caseTa.value = caseDetailsText(a);
+      caseBox.style.display = "";
+    }
+
     var ftcBtn = h("button", { id: "sf-report-ftc",
       "class": "sf-btn-yellow", "type": "button" }, "Report to FTC");
     ftcBtn.addEventListener("click", function () {
+      // Order matters: window.open goes FIRST, synchronously in
+      // the click handler, because popup blockers eat a tab opened
+      // after any await. The box + copy run right after, in the
+      // same handler — and if opening the tab steals the focus the
+      // clipboard write needs, copyText's select + Ctrl+C fallback
+      // below covers it.
       window.open("https://reportfraud.ftc.gov/", "_blank", "noopener");
-      copyText(caseDetailsText(a)).then(function (ok) {
-        setCaseStatus(ok
-          ? "✓ Case details copied — on the FTC site, click Report Now and " +
-            "follow the phishing path it offers, then paste these details " +
-            "where it asks what happened. Spam Avenger can't fill in web " +
-            "forms from Outlook, so nothing was filled in for you."
-          : "⚠ Couldn't copy the details — the form opened anyway. " +
-            "Copy them from Show details above and paste them in.");
+      showCaseBox("Case details for the FTC form — paste these " +
+        "into the Comments box:");
+      copyText(caseTa.value, caseStatus, {
+        selectEl: caseTa,
+        successText: "✓ Copied — the FTC form is open in a new " +
+          "tab: click Report Now there, follow the phishing path " +
+          "it offers, click the Comments box and press Ctrl+V. " +
+          "Spam Avenger can't fill in web forms from Outlook, so " +
+          "nothing was filled in for you. If nothing pastes, the " +
+          "details stay in the box above — copy them from there.",
+        manualText: "⚠ Copy didn't take — the case details in " +
+          "the box above are selected: press Ctrl+C, then paste " +
+          "them into the FTC form's Comments box with Ctrl+V (" +
+          TAG + ")."
       });
     });
     var sbBtn = h("button", { id: "sf-report-sb",
@@ -436,27 +516,27 @@
     sbBtn.addEventListener("click", function () {
       window.open("https://safebrowsing.google.com/safebrowsing/report_phish/",
         "_blank", "noopener");
-      var hasUrl = a.urls && a.urls.length;
-      copyText(hasUrl ? a.urls[0] : caseDetailsText(a)).then(function (ok) {
-        if (!ok) {
-          setCaseStatus("⚠ Couldn't copy — the form opened anyway. " +
-            "Copy the link from Show details above and paste it in.");
-        } else if (hasUrl) {
-          setCaseStatus("✓ Link copied — paste it into the form's URL " +
-            "box, then submit. Spam Avenger can't fill in web forms " +
-            "from Outlook." +
-            (a.urls.length > 1
-              ? " This message had " + a.urls.length + " links — the " +
-                "first is copied; the rest are under Show details."
-              : ""));
-        } else {
-          setCaseStatus("✓ Case details copied — no link was found in " +
-            "this message; paste the details into the form where it " +
-            "asks for them.");
-        }
+      showCaseBox("Case details for the Safe Browsing form:");
+      var firstLink = (a.urls && a.urls.length)
+        ? " The first link in the box is the one to paste into " +
+          "the form's URL box."
+        : "";
+      copyText(caseTa.value, caseStatus, {
+        selectEl: caseTa,
+        successText: "✓ Copied — the Safe Browsing form is open " +
+          "in a new tab: click its URL box and press Ctrl+V, " +
+          "then submit." + firstLink + " Spam Avenger can't fill " +
+          "in web forms from Outlook, so nothing was filled in " +
+          "for you. If nothing pastes, the details stay in the " +
+          "box above — copy them from there.",
+        manualText: "⚠ Copy didn't take — the case details in " +
+          "the box above are selected: press Ctrl+C, then paste " +
+          "them into the Safe Browsing form with Ctrl+V (" +
+          TAG + ")."
       });
     });
     body.appendChild(h("div", { "class": "sf-actions" }, ftcBtn, sbBtn));
+    body.appendChild(caseBox);
     body.appendChild(caseStatus);
 
     // Forward to APWG + CISA: a compose pre-addressed to both
@@ -836,12 +916,20 @@
       });
       copyBtn.addEventListener("click", function () {
         if (!letter) refresh();
-        copyText(letterTa.value, function () {
-          letterTa.select();
-          try { return document.execCommand("copy"); } catch (e) { return false; }
-        }).then(function (ok) {
-          flashLabel(copyBtn, ok ? "Copied!" :
-            "Couldn't copy — open Preview the letter and press Ctrl+C", 2500);
+        copyText(letterTa.value, null, {
+          selectEl: letterTa,
+          // The letter preview starts hidden; if both copy paths
+          // fail, reveal it so the selection the user is told to
+          // Ctrl+C is actually on screen.
+          onManual: function () {
+            letterBox.style.display = "";
+            pToggle.textContent = "Hide letter ▾";
+            pToggle.setAttribute("aria-expanded", "true");
+          }
+        }).then(function (outcome) {
+          flashLabel(copyBtn, outcome !== "manual" ? "Copied!" :
+            "Copy didn't take — the letter above is selected, " +
+            "press Ctrl+C (" + TAG + ")", 4000);
         });
       });
     }
@@ -850,6 +938,13 @@
       if (D.detailsComplete(det)) renderDemandStep(det);
       else renderDetailsForm();
     }).catch(function () { renderDetailsForm(); });
+  }
+
+  // Test hook: lets the Node harness exercise copyText's three
+  // paths with stubbed navigator/document. Inert in the browser
+  // (no module system there).
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = { copyText: copyText, VERSION: VERSION };
   }
 
   /* ---------- Boot ---------- */
