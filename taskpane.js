@@ -1,4 +1,4 @@
-/* Spam Avenger for Outlook — task pane (Phase 1, v1.2.4).
+/* Spam Avenger for Outlook — task pane (Phase 1, v1.2.3).
  *
  * The Gmail addon's panel, rebuilt on Office.js. On open (and on
  * item change) it runs the trace automatically: full internet
@@ -48,7 +48,7 @@
  * for neutral wording that says what Outlook's Report button
  * actually does — toned down for AppSource review.
  *
- * v1.2.4: parity with the Gmail addon's v1.0.67/v1.0.68
+ * v1.2.3: parity with the Gmail addon's v1.0.67/v1.0.68
  * Microsoft tenant-account behavior (Michael's call, 2026-11-02:
  * the Outlook build gets the same updates before any AppSource
  * submission). The engine (analyze.js, refreshed to the current
@@ -77,7 +77,7 @@
 (function () {
   "use strict";
 
-  var VERSION = "1.2.4";
+  var VERSION = "1.2.3";
   var TAG = "v" + VERSION;
 
   function $(id) { return document.getElementById(id); }
@@ -462,7 +462,7 @@
       details.appendChild(mkRow("Server",
         a.host ? SpamAvenger.displayHost(a.host) : "unknown"));
       details.appendChild(mkRow("Owned by", a.org || "unknown"));
-      // v1.2.4 (Gmail v1.0.68 parity): in the Microsoft
+      // v1.2.3 (Gmail v1.0.68 parity): in the Microsoft
       // tenant-account case, the abuse contact that matters is
       // the phishing desk the complaint section now targets —
       // not the pool IP's RDAP contact — and the makeup line
@@ -549,7 +549,7 @@
       var compSec = accSection("sf-sec-complaint", "sf-btn-green",
         "Abuse complaint — ready to send");
       var cw = h("div", { "class": "sf-complaint" });
-      // v1.2.4 (Gmail v1.0.67 parity, Michael's correction):
+      // v1.2.3 (Gmail v1.0.67 parity, Michael's correction):
       // NOT a separate section — this is the same abuse
       // complaint section, switched. When the traced origin is
       // Microsoft's Outlook protection pool and the account's

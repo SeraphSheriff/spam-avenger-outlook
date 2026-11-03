@@ -16,7 +16,7 @@ stays focused on what you're doing.
 - **Abuse complaint — ready to send** — *Open in Outlook* opens a
   compose pre-filled to the abuse desk (review and send it yourself;
   nothing is ever sent automatically). One switch, same section
-  (v1.2.4, matching the Gmail version): when a message was sent by
+  (v1.2.3, matching the Gmail version): when a message was sent by
   a real Microsoft 365 account — traced to Microsoft's shared
   Outlook protection servers, with the account's SPF, DKIM and
   DMARC all passing — the complaint is addressed to Microsoft's
@@ -68,7 +68,7 @@ Outlook".
 
 | File | What it is |
 |---|---|
-| `taskpane.html` / `.js` / `.css` | The panel (Phase 1, v1.2.4 — accordion layout: one focused task expanded at a time) |
+| `taskpane.html` / `.js` / `.css` | The panel (Phase 1, v1.2.3 — accordion layout: one focused task expanded at a time) |
 | `commands.html` / `.js` | Minimal FunctionFile the manifest requires |
 | `analyze.js` | The Spam Avenger engine (unmodified copy of the Gmail build) |
 | `demand.js` | The data-deletion demand engine (Gmail build; only the storage choke point differs — localStorage instead of chrome.storage) |

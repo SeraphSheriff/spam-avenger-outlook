@@ -1,4 +1,4 @@
-// Spam Avenger for Outlook v1.2.4 — Microsoft tenant-account
+// Spam Avenger for Outlook v1.2.3 — Microsoft tenant-account
 // parity with the Gmail addon's v1.0.67/v1.0.68 behavior.
 // The engine (analyze.js) is the unmodified Gmail build, so
 // most checks mirror the Gmail suites against the real first
@@ -9,7 +9,7 @@
 // msDetailsNote. The DNS "no website" tell asserts only on a
 // confirmed-empty result.
 //
-// Run: node tests/test-v124-ms-account-report.js
+// Run: node tests/test-v123-ms-account-report.js
 "use strict";
 const fs = require("fs");
 const path = require("path");
@@ -34,23 +34,23 @@ function ok(name, cond, extra) {
 }
 
 // ---------- version pins ----------
-ok("taskpane VERSION is 1.2.4", taskpane.VERSION === "1.2.4",
+ok("taskpane VERSION is 1.2.3", taskpane.VERSION === "1.2.3",
   "got " + taskpane.VERSION);
-ok("taskpane.html tag shows v1.2.4", htmlSrc.indexOf("v1.2.4") !== -1);
-ok("manifest version is 1.2.4.0",
-  manifestSrc.indexOf("<Version>1.2.4.0</Version>") !== -1);
+ok("taskpane.html tag shows v1.2.3", htmlSrc.indexOf("v1.2.3") !== -1);
+ok("manifest version is 1.2.3.0",
+  manifestSrc.indexOf("<Version>1.2.3.0</Version>") !== -1);
 
 // dist mirrors (only exist in the working tree, not the repo)
 const distDir = path.join(ROOT, "dist");
 if (fs.existsSync(distDir)) {
-  const v124 = fs.readFileSync(path.join(distDir, "manifest-v124.xml"), "utf8");
+  const v123 = fs.readFileSync(path.join(distDir, "manifest-v123.xml"), "utf8");
   const distRoot = fs.readFileSync(path.join(distDir, "manifest.xml"), "utf8");
-  ok("dist/manifest-v124.xml is the new live manifest", v124 === manifestSrc);
+  ok("dist/manifest-v123.xml is the new live manifest", v123 === manifestSrc);
   ok("dist/manifest.xml mirrors the live manifest", distRoot === manifestSrc);
   const draft = fs.readFileSync(
     path.join(distDir, "manifest-store-draft.xml"), "utf8");
-  ok("store draft carries 1.2.4.0",
-    draft.indexOf("<Version>1.2.4.0</Version>") !== -1);
+  ok("store draft carries 1.2.3.0",
+    draft.indexOf("<Version>1.2.3.0</Version>") !== -1);
   function stripVolatile(s) {
     return s.split("\n").filter(function (ln) {
       return ln.indexOf("<Version>") === -1 &&
