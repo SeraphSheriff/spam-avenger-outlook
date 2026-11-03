@@ -22,19 +22,20 @@ stays focused on what you're doing.
   DMARC all passing — the complaint is addressed to Microsoft's
   phishing desk (phish@office365.microsoft.com) and reports the
   account itself, since a host complaint against the shared IP
-  would reach the wrong target. And when spam traces to a
-  computer rented on Microsoft Azure, the same section adds a
-  small form kit — Microsoft's abuse-form link (prefilled for
-  an IP-address spam report) plus a copy-ready details block —
-  because Microsoft opens Azure abuse cases from its web form;
-  the emailed complaint stays as well. And when spam traces to
-  Google Cloud, Amazon AWS, or OVHcloud — desks that likewise
-  act on their web forms — the same section adds a per-field
-  form kit for that host: the form link, then a walk through
-  the form's boxes one at a time, each pasteable field with
-  its own Copy button carrying exactly the evidence slice
-  that box asks for (the forms' name/email boxes are yours;
-  the kits never prepare those).
+  would reach the wrong target. For the four form hosts, the
+  section instead becomes **Abuse report — use their form**:
+  form kit only, no emailed complaint and no send button,
+  because those desks act on their web forms and an emailed
+  complaint goes nowhere. Microsoft Azure gets Microsoft's
+  abuse-form link (prefilled for an IP-address spam report)
+  plus a copy-ready details block, since Microsoft opens
+  Azure abuse cases from its web form. Google Cloud, Amazon
+  AWS, and OVHcloud each get a per-field form kit for that
+  host: the form link, then a walk through the form's boxes
+  one at a time, each pasteable field with its own Copy
+  button carrying exactly the evidence slice that box asks
+  for (the forms' name/email boxes are yours; the kits never
+  prepare those).
 - **Report it** — *Report to FTC* and *Report to Google Safe
   Browsing* walk you through the form from inside their sections:
   the "Open the … form" button opens the form and the case details

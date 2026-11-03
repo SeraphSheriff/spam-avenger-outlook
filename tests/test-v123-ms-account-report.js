@@ -11,9 +11,15 @@
 // msDetailsNote. The DNS "no website" tell asserts only on a
 // confirmed-empty result. The Azure form kit (Michael's second
 // live case, Nov 2 2026) is covered at the end: an Azure-hosted
-// spam keeps its emailed complaint AND flags the hyperscaler
-// the pane kit keys off; a tenant case whose RDAP reads as a
-// Microsoft cloud block still stays on the phishing desk.
+// spam flags the hyperscaler the pane kit keys off (the engine
+// still builds the emailed complaint — the pane's form-only
+// rendering simply never offers it); a tenant case whose RDAP
+// reads as a Microsoft cloud block still stays on the phishing
+// desk. The form-only rendering itself (all four form hosts
+// kit-only: no complaint box, no send button — Michael's call
+// after live-testing the Azure kit, extended to Google / AWS /
+// OVH) is pinned through the pane's formOnlyFor resolver plus
+// source pins on the render guards.
 // The three per-field form kits are covered after that:
 // field maps mirrored verbatim from the Gmail panel's hint
 // table, slices from the shared engine's
@@ -296,8 +302,10 @@ ok("azure: form URL is the exact prefilled MSRC link",
   "https://msrc.microsoft.com/report/abuse?ThreatType=IpAddress&IncidentType=Spam",
   taskpane.AZURE_FORM_URL);
 ok("pane: kit triggers on the hyperscaler flag, tenant case excluded",
-  taskpaneSrc.indexOf(
-    'if (a.hyperscaler === "azure" && !a.msAccountReport)') !== -1);
+  taskpane.formOnlyFor(
+    { hyperscaler: "azure", msAccountReport: false }, null) === "azure" &&
+  taskpane.formOnlyFor(
+    { hyperscaler: "azure", msAccountReport: true }, null) === null);
 ok("pane: kit wording names the form as where a case gets opened",
   taskpaneSrc.indexOf("computer rented on Microsoft") !== -1 &&
   taskpaneSrc.indexOf("the form is where a case") !== -1);
@@ -308,6 +316,54 @@ ok("pane: kit carries the form-details box and its copy button",
 ok("pane: kit link is the printed URL itself, opened in a new tab",
   taskpaneSrc.indexOf("}, AZURE_FORM_URL));") !== -1 &&
   taskpaneSrc.indexOf('href: AZURE_FORM_URL') !== -1);
+
+// ---------- form-only rendering (all four form hosts) ----------
+// Michael's call (Nov 2 2026): live-testing the Azure kit with
+// BOTH the emailed complaint and the form kit showing, he ruled
+// the email lane pointless for a form host — there's no sense in
+// a "just click Send" button to an abuse desk when the report
+// only counts through the host's web form — then extended it:
+// "Match all four in Outlook." So wherever a form kit renders,
+// the section is the kit only: no complaint box, no send button.
+ok("form-only: azure resolves through the pane resolver",
+  taskpane.formOnlyFor(
+    { hyperscaler: "azure", msAccountReport: false },
+    { to: "abuse@microsoft.com" }) === "azure");
+ok("form-only: google and aws resolve through the pane resolver",
+  taskpane.formOnlyFor(
+    { hyperscaler: "google", msAccountReport: false }, null) === "google" &&
+  taskpane.formOnlyFor(
+    { hyperscaler: "aws", msAccountReport: false }, null) === "aws");
+ok("form-only: OVH resolves off the complaint contact",
+  taskpane.formOnlyFor(
+    { msAccountReport: false, org: "OVH SAS" },
+    { to: "abuse@ovh.net" }) === "ovh");
+ok("form-only: tenant case never resolves, even wearing a hyperscaler flag",
+  taskpane.formOnlyFor(
+    { hyperscaler: "google", msAccountReport: true },
+    { to: "phish@office365.microsoft.com" }) === null &&
+  taskpane.formOnlyFor(
+    Object.assign({}, msA, { hyperscaler: "azure" }),
+    { to: "phish@office365.microsoft.com" }) === null);
+ok("form-only: a normal sender resolves nothing",
+  taskpane.formOnlyFor(normalA, normalComplaint) === null);
+ok("pane: form-only section is retitled (nothing to send here)",
+  taskpaneSrc.indexOf('formOnly ? "Abuse report — use their form"') !== -1 &&
+  taskpaneSrc.indexOf('"Abuse complaint — ready to send"') !== -1);
+(function () {
+  const guard = taskpaneSrc.indexOf("if (!formOnly)");
+  const box = taskpaneSrc.indexOf('id: "sf-complaint-text"');
+  const send = taskpaneSrc.indexOf('id: "sf-compose"');
+  ok("pane: complaint box and send button both sit behind the form-only guard",
+    guard !== -1 && box > guard && send > guard,
+    "guard=" + guard + " box=" + box + " send=" + send);
+})();
+ok("pane: azure kit renders off the resolved form-only key",
+  taskpaneSrc.indexOf("var formOnlyKey = formOnlyFor(a, c);") !== -1 &&
+  taskpaneSrc.indexOf("if (azureKit) {") !== -1);
+ok("pane: compose listener attaches only when the button rendered",
+  taskpaneSrc.indexOf("if (compBtn) {") !== -1 &&
+  taskpaneSrc.indexOf("var compBtn = null;") !== -1);
 
 const azureA = analyze.analyze(AZURE_RAW);
 ok("analyze: Azure spam traces to the Azure IP, not the tenant case",
@@ -662,8 +718,10 @@ async function run() {
   ok("investigate: normal sender has no hyperscaler flag (no form kit)",
     !invC.hyperscaler, "got " + invC.hyperscaler);
 
-  // E: Azure-hosted spam — the emailed complaint stays, the
-  // hyperscaler flag fires for the pane's form kit.
+  // E: Azure-hosted spam — the engine still builds the emailed
+  // complaint (the form details block mirrors it) and the
+  // hyperscaler flag fires for the pane's form kit; the pane's
+  // form-only rendering just never offers the email (case K).
   global.fetch = pipeStub({ rdap: RDAP_AZURE,
     ptr: "52-242-95-45.cloudapp.azure.com." });
   const invE = await analyze.investigate(AZURE_RAW);
@@ -748,6 +806,22 @@ async function run() {
     taskpane.formKitKeyFor(invJ, invJ.complaint) === null,
     JSON.stringify({ hyper: invJ.hyperscaler,
       to: invJ.complaint && invJ.complaint.to }));
+
+  // K: form-only resolution end to end — every form host
+  // resolves, so its section renders the kit only (no
+  // complaint box, no send button); the tenant case (plain,
+  // wearing Azure RDAP, wearing Google RDAP) and a normal
+  // sender never resolve, so their complaint + compose stand.
+  ok("investigate: form-only resolves for all four form hosts",
+    taskpane.formOnlyFor(invE, invE.complaint) === "azure" &&
+    taskpane.formOnlyFor(invG, invG.complaint) === "google" &&
+    taskpane.formOnlyFor(invH, invH.complaint) === "aws" &&
+    taskpane.formOnlyFor(invI, invI.complaint) === "ovh");
+  ok("investigate: form-only never fires for tenant or normal cases",
+    taskpane.formOnlyFor(invA, invA.complaint) === null &&
+    taskpane.formOnlyFor(invF, invF.complaint) === null &&
+    taskpane.formOnlyFor(invJ, invJ.complaint) === null &&
+    taskpane.formOnlyFor(invC, invC.complaint) === null);
 
   console.log("\n" + pass + " passed, " + fail + " failed");
   process.exit(fail ? 1 : 0);
