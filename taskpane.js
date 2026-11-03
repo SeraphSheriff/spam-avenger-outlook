@@ -85,6 +85,26 @@
  * the kit (its phishing-desk switch above owns that section),
  * and a pool spoof never reaches this section at all.
  *
+ * v1.2.3: the same section also carries per-field form kits
+ * for the other three form hosts — Google Cloud, Amazon AWS,
+ * and OVHcloud (Gmail v1.0.69 parity, Michael's call,
+ * 2026-11-02: build all three at once). Those forms split a
+ * report across their own boxes, so instead of one paste
+ * block each kit walks the form field by field: every step
+ * names the form's box, says the one thing to do with it,
+ * and — where the box takes a paste — shows that field's
+ * evidence slice (the shared engine's
+ * buildFormFieldEvidence) with its own Copy button. The
+ * field maps mirror the Gmail panel's HYPER_FORM_HINTS
+ * entries and OVH hint verbatim, so the two panels can't
+ * drift. The forms' name/email boxes are the reporter's
+ * own — each kit's intro says so, and no step ever prepares
+ * them. The tenant-account case never gets a kit, and the
+ * emailed complaint stays in place above the kit, as with
+ * Azure. For OVHcloud the kit replaces the older warning
+ * note that used to render in this section — the kit
+ * carries the form link the note pointed at, plus the steps.
+ *
  * Every async call is wrapped with a timeout and every failure
  * surfaces as a short user-readable line carrying the version
  * tag — the pane never hangs silently.
@@ -377,6 +397,152 @@
     return SpamAvenger.buildFormEvidence(a, { mirrorComplaint: true }) || "";
   }
 
+  // Per-field form kits (v1.2.3, Gmail v1.0.69 parity): the
+  // Google Cloud, AWS, and OVHcloud abuse forms split a
+  // report across their own boxes — one paste block fits
+  // none of them (Google caps its details box at 1,000
+  // characters and takes headers as an uploaded log file;
+  // AWS asks for incident lines plus log extracts;
+  // OVHcloud wants a location, a description it forwards
+  // to the service owner, and logs separately). So each kit
+  // below declares its form's fields, and each field's Copy
+  // button carries the evidence slice the shared engine
+  // builds for that box (buildFormFieldEvidence, keyed by
+  // the field's `copy` name; a null `copy` is a pick-only
+  // step — guidance, nothing to paste). The label / url /
+  // linkText / pick / fieldsIntro / fields values mirror
+  // the Gmail panel's HYPER_FORM_HINTS entries and its OVH
+  // hint VERBATIM, so the two panels can't drift; only the
+  // `intro` line is Outlook's own (the Gmail kit replaces
+  // its whole section, this pane keeps the emailed
+  // complaint above the kit, so the kit needs a line saying
+  // why it's there). The forms' name/email boxes are the
+  // reporter's own — each fieldsIntro says so, and no step
+  // ever prepares identity fields.
+  var FORM_FIELD_KITS = {
+    google: { label: "Google Cloud",
+      url: "https://support.google.com/code/contact/cloud_platform_report",
+      linkText: "support.google.com/code/contact/cloud_platform_report",
+      intro: "This spam came from a computer rented on " +
+        "Google Cloud. Google takes abuse reports for " +
+        "Cloud through its web form:",
+      pick: "For the service question, pick Compute Engine.",
+      fieldsIntro: "The form's first boxes are your name and " +
+        "email address \u2014 those are yours to fill in, and " +
+        "Spam Avenger never prepares them. The steps below " +
+        "cover the form's evidence fields, one box at a time.",
+      fields: [
+        { box: "Abuse date",
+          help: "The day the message arrived, in the date " +
+            "box's YYYY-MM-DD shape.",
+          copy: "date" },
+        { box: "Abuse details",
+          help: "Google caps this box at 1,000 characters, " +
+            "so this copy is the short version: the IP, the " +
+            "message facts, and the links. The full headers " +
+            "go in the logs upload below, not here.",
+          copy: "googleDetails" },
+        { box: "Additional logs",
+          help: "This one is a file upload, not a paste box. " +
+            "Copy the log text, save it as a plain text file " +
+            "(for example abuse-log.txt), and upload that file.",
+          copy: "logs" } ] },
+    aws: { label: "Amazon AWS",
+      url: "https://repost.aws/knowledge-center/report-aws-abuse",
+      linkText: "repost.aws/knowledge-center/report-aws-abuse",
+      intro: "This spam came from a computer rented on " +
+        "Amazon AWS. AWS takes abuse reports through its " +
+        "web form:",
+      fieldsIntro: "The form starts by asking who you " +
+        "are \u2014 your name and email are yours to fill in, " +
+        "and Spam Avenger never prepares them. The steps " +
+        "below cover the evidence AWS asks a report to carry.",
+      fields: [
+        { box: "Type of abuse",
+          help: "Pick the spam / abusive-email option " +
+            "\u2014 AWS routes the report by it. Nothing to " +
+            "paste here.",
+          copy: null },
+        { box: "Source IP and date/time",
+          help: "AWS asks for the source IP, the date and " +
+            "time of the incident, and the time zone " +
+            "\u2014 one incident block, dates in ISO 8601.",
+          copy: "awsIncident" },
+        { box: "Log extracts",
+          help: "AWS asks for log extracts that show the " +
+            "activity. For an email, the log is the " +
+            "message's Received line and its full headers.",
+          copy: "logs" },
+        { box: "URLs in the message",
+          help: "For abusive content AWS asks for the " +
+            "specific URLs. These are un-defanged, exactly " +
+            "as they appeared \u2014 a URL box needs the " +
+            "literal addresses.",
+          copy: "urls" } ] },
+    ovh: { label: "OVHcloud",
+      url: "https://www.ovhcloud.com/en/abuse/",
+      linkText: "ovhcloud.com/en/abuse",
+      intro: "This server belongs to OVHcloud. OVHcloud " +
+        "takes abuse reports through its web form \u2014 " +
+        "emailed complaints are answered by pointing at it:",
+      fieldsIntro: "The form asks who you are and wants an " +
+        "email address for the outcome \u2014 those are yours " +
+        "to fill in, and Spam Avenger never prepares them. " +
+        "The steps below cover the report's evidence fields.",
+      fields: [
+        { box: "Category",
+          help: "Pick the category for unsolicited email / " +
+            "spam \u2014 OVHcloud routes the report by it. " +
+            "Nothing to paste here.",
+          copy: null },
+        { box: "Location",
+          help: "OVHcloud asks for the location of the " +
+            "reported activity, a URL or an IP address. For " +
+            "email spam that is the sending IP address.",
+          copy: "ip" },
+        { box: "Description",
+          help: "OVHcloud requires a description of what " +
+            "happened, and sends it to the service owner " +
+            "\u2014 so this copy is facts only: what " +
+            "arrived, from where, and when. No names, no " +
+            "personal information.",
+          copy: "description" },
+        { box: "Logs / technical elements",
+          help: "OVHcloud forwards only logs and technical " +
+            "elements to the service owner, and says to keep " +
+            "personal data out of these fields. This copy is " +
+            "the message's Received line and full headers " +
+            "\u2014 give it a once-over for your own address " +
+            "before you submit.",
+          copy: "logs" } ] }
+  };
+
+  // Which stepped kit a traced message gets, mirroring the
+  // Gmail panel's form-lane resolution order: the Microsoft
+  // tenant-account case never gets one (its phishing-desk
+  // switch owns the section); a hyperscaler flag wins over
+  // the OVH contact/org match (the networks are disjoint in
+  // practice). Azure is NOT resolved here — its one-field
+  // kit above is a separate block. Returns "google" | "aws"
+  // | "ovh" | null.
+  function formKitKeyFor(a, c) {
+    if (!a || a.msAccountReport) return null;
+    if (a.hyperscaler === "google" || a.hyperscaler === "aws") {
+      return a.hyperscaler;
+    }
+    if (c && /ovh/i.test(c.to + " " + (a.org || ""))) return "ovh";
+    return null;
+  }
+
+  // One field's evidence slice, from the shared engine —
+  // the same builder the Gmail panel's step buttons use, so
+  // a field's copy is identical in both panels. Empty string
+  // when the slice can't be built (the renderer then skips
+  // the step rather than showing an empty box).
+  function formFieldText(a, key) {
+    return SpamAvenger.buildFormFieldEvidence(a, key) || "";
+  }
+
   // Safe Browsing's details box is small (the Gmail reportfill
   // lane budgets 800 chars for it), so this lane gets its own
   // SHORT summary instead of the full case text: who it claims to
@@ -611,19 +777,11 @@
       ta.readOnly = true;
       ta.value = "To: " + c.to + "\nSubject: " + c.subject + "\n\n" + c.body;
       cw.appendChild(ta);
-      // OVHcloud deflects emailed complaints to its web form
-      // (Gmail panel behavior, confirmed 2026-10-15) — warn upfront.
-      if (/ovh/i.test(c.to + " " + (a.org || ""))) {
-        var ovhNote = h("p", { "class": "sf-warn" },
-          "Heads up: this server belongs to OVHcloud, and their abuse desk " +
-          "ignores emailed complaints — they want their web form instead: ");
-        ovhNote.appendChild(h("a", {
-          href: "https://www.ovhcloud.com/en/abuse/",
-          "class": "sf-ovh-btn",
-          target: "_blank", rel: "noopener"
-        }, "ovhcloud.com/en/abuse"));
-        cw.appendChild(ovhNote);
-      }
+      // OVHcloud used to get a warning note here (its desk
+      // deflects emailed complaints to its web form, field-
+      // tested 2026-10-15). The per-field OVH form kit below
+      // subsumes it — it carries the same form link, plus the
+      // steps the note never had.
       // Azure form kit (v1.2.3, Michael's live-test call
       // 2026-11-02): when the trace lands on a computer rented
       // on Microsoft Azure (the engine's hyperscaler flag, the
@@ -675,6 +833,88 @@
         });
         cw.appendChild(h("div", { "class": "sf-actions" }, azCopyBtn));
         cw.appendChild(azStatus);
+      }
+      // Per-field form kits for Google Cloud / AWS /
+      // OVHcloud (v1.2.3, Gmail v1.0.69 parity): those forms
+      // split a report across their own boxes, so the kit
+      // walks the form field by field INSIDE this section —
+      // each step names the form's box, says the one thing
+      // to do with it, and shows that field's evidence slice
+      // with its own Copy button (the pane's shared copyText,
+      // like the FTC lane's). The emailed complaint above
+      // stays exactly as it is; the kit is an addition, not
+      // a replacement, and NOT a new section (the pane stays
+      // at six). Resolution mirrors the Gmail panel's: the
+      // tenant-account case never gets a kit, a hyperscaler
+      // flag beats the OVH match. Steps whose slice can't be
+      // built (no URLs for a URL box, an unparseable date)
+      // are skipped outright rather than shown empty — the
+      // Gmail renderer's rule.
+      var stepKitKey = formKitKeyFor(a, c);
+      if (stepKitKey) {
+        var stepKit = FORM_FIELD_KITS[stepKitKey];
+        cw.appendChild(h("p", { "class": "sf-note" },
+          stepKit.intro));
+        var stepLinkP = h("p", { "class": "sf-formlink" });
+        stepLinkP.appendChild(h("a", {
+          href: stepKit.url, target: "_blank", rel: "noopener"
+        }, stepKit.linkText));
+        cw.appendChild(stepLinkP);
+        var stepStatus = secStatus("sf-form-" + stepKitKey + "-status");
+        var stepWrap = h("div", { "class": "sf-form-fields" });
+        stepWrap.appendChild(h("b", null,
+          "Filling in the " + stepKit.label +
+          " form, field by field"));
+        if (stepKit.pick) {
+          stepWrap.appendChild(h("p", { "class": "sf-note" },
+            stepKit.pick));
+        }
+        if (stepKit.fieldsIntro) {
+          stepWrap.appendChild(h("p", { "class": "sf-note" },
+            stepKit.fieldsIntro));
+        }
+        stepKit.fields.forEach(function (fld, fi) {
+          var fTxt = fld.copy ? formFieldText(a, fld.copy) : null;
+          if (fld.copy && !fTxt) return; // no slice, no step
+          var fBlock = h("div", { "class": "sf-form-field" });
+          fBlock.appendChild(h("b", null,
+            "For the form\u2019s \u201C" + fld.box +
+            "\u201D field"));
+          if (fld.help) {
+            fBlock.appendChild(h("p", { "class": "sf-fine" },
+              fld.help));
+          }
+          if (fld.copy) {
+            var fTa = h("textarea", {
+              id: "sf-form-" + stepKitKey + "-text-" + fi });
+            fTa.readOnly = true;
+            fTa.value = fTxt;
+            fBlock.appendChild(fTa);
+            var fBtn = h("button", {
+              id: "sf-form-" + stepKitKey + "-copy-" + fi,
+              "class": "sf-btn-green", "type": "button" },
+              "Copy for the " + fld.box + " field");
+            fBtn.addEventListener("click", function () {
+              copyText(fTa.value, stepStatus, {
+                selectEl: fTa,
+                successText: "\u2713 Copied \u2014 on the " +
+                  stepKit.label + " form, click its \u201C" +
+                  fld.box + "\u201D field and press Ctrl+V (" +
+                  TAG + ").",
+                manualText: "\u26a0 Copy didn't take \u2014 the " +
+                  "text in the box above is selected: press " +
+                  "Ctrl+C, then paste it into the form's " +
+                  "\u201C" + fld.box + "\u201D field with " +
+                  "Ctrl+V (" + TAG + ")."
+              });
+            });
+            fBlock.appendChild(h("div", { "class": "sf-actions" },
+              fBtn));
+          }
+          stepWrap.appendChild(fBlock);
+        });
+        cw.appendChild(stepWrap);
+        cw.appendChild(stepStatus);
       }
       // v1.2.1: no Copy button for the COMPLAINT here — same
       // pattern as the Forward section. The compose IS the
@@ -1197,6 +1437,9 @@
       caseDetailsText: caseDetailsText,
       azureFormDetailsText: azureFormDetailsText,
       AZURE_FORM_URL: AZURE_FORM_URL,
+      FORM_FIELD_KITS: FORM_FIELD_KITS,
+      formKitKeyFor: formKitKeyFor,
+      formFieldText: formFieldText,
       sbDetailsText: sbDetailsText,
       SB_NO_LINKS: SB_NO_LINKS,
       SB_INSTRUCTIONS: SB_INSTRUCTIONS,

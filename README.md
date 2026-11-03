@@ -27,7 +27,14 @@ stays focused on what you're doing.
   small form kit — Microsoft's abuse-form link (prefilled for
   an IP-address spam report) plus a copy-ready details block —
   because Microsoft opens Azure abuse cases from its web form;
-  the emailed complaint stays as well.
+  the emailed complaint stays as well. And when spam traces to
+  Google Cloud, Amazon AWS, or OVHcloud — desks that likewise
+  act on their web forms — the same section adds a per-field
+  form kit for that host: the form link, then a walk through
+  the form's boxes one at a time, each pasteable field with
+  its own Copy button carrying exactly the evidence slice
+  that box asks for (the forms' name/email boxes are yours;
+  the kits never prepare those).
 - **Report it** — *Report to FTC* and *Report to Google Safe
   Browsing* walk you through the form from inside their sections:
   the "Open the … form" button opens the form and the case details

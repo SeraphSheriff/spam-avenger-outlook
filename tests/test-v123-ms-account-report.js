@@ -1,5 +1,7 @@
 // Spam Avenger for Outlook v1.2.3 — Microsoft tenant-account
-// parity with the Gmail addon's v1.0.67/v1.0.68 behavior.
+// parity with the Gmail addon's v1.0.67/v1.0.68 behavior, the
+// Azure form kit, and the per-field form kits for Google
+// Cloud / AWS / OVHcloud (Gmail v1.0.69 parity).
 // The engine (analyze.js) is the unmodified Gmail build, so
 // most checks mirror the Gmail suites against the real first
 // case (Jessica Huber, Nov 2 2026); the pane checks pin the
@@ -12,6 +14,12 @@
 // spam keeps its emailed complaint AND flags the hyperscaler
 // the pane kit keys off; a tenant case whose RDAP reads as a
 // Microsoft cloud block still stays on the phishing desk.
+// The three per-field form kits are covered after that:
+// field maps mirrored verbatim from the Gmail panel's hint
+// table, slices from the shared engine's
+// buildFormFieldEvidence, kit resolution (hyperscaler flag,
+// OVH contact match, tenant guard over all of them), and
+// investigate() runs per host.
 //
 // Run: node tests/test-v123-ms-account-report.js
 "use strict";
@@ -148,6 +156,48 @@ const AZURE_RAW = [
   "Date: Mon, 02 Nov 2026 03:06:00 +0000",
   "",
   "Verify now: http://hc00brf6dp.acros.fun/cl/3147_rd/2007/0/280/294"
+].join("\n");
+
+// A spam run off a rented Google Cloud VM: the abuse desk
+// of record is Google Cloud Compliance, and the report
+// lane is Google's own form (per-field kit).
+const GOOGLE_RAW = [
+  "Received: from mail.cloudspam.example ([198.51.100.23]) by mx.example with smtp",
+  "Authentication-Results: mx.example; spf=fail smtp.mailfrom=cloudspam.example",
+  "From: Prize Center <winner@cloudspam.example>",
+  "Subject: Your storage prize is waiting",
+  "Message-ID: <prize@cloudspam.example>",
+  "Date: Fri, 30 Oct 2026 11:02:00 +0000",
+  "",
+  "Claim here: https://storage.googleapis.com/prize-bucket/claim.html"
+].join("\n");
+
+// A spam run off an Amazon EC2 instance: EC2 Abuse desk,
+// AWS's report form (per-field kit).
+const AWS_RAW = [
+  "Received: from ec2-192-0-2-55.compute-1.amazonaws.com ([192.0.2.55]) by mx.example with smtp",
+  "Authentication-Results: mx.example; spf=fail smtp.mailfrom=ec2spam.example",
+  "From: Account Team <alert@ec2spam.example>",
+  "Subject: Urgent: verify your account",
+  "Message-ID: <verify@ec2spam.example>",
+  "Date: Sun, 01 Nov 2026 08:15:00 +0000",
+  "",
+  "Verify: http://win-big.example.net/claim and https://cdn.example.net/x.js"
+].join("\n");
+
+// A spam hosted at OVHcloud: abuse@ovh.net is the contact
+// of record, but OVHcloud acts on its web form (per-field
+// kit, resolved off the contact match — OVH is not a
+// hyperscaler flag).
+const OVH_RAW = [
+  "Received: from mail.ovhspam.example ([198.51.100.77]) by mx.example with smtp",
+  "Authentication-Results: mx.example; spf=fail smtp.mailfrom=ovhspam.example",
+  "From: Lottery <draw@ovhspam.example>",
+  "Subject: You are selected",
+  "Message-ID: <draw@ovhspam.example>",
+  "Date: Sat, 31 Oct 2026 22:40:00 +0000",
+  "",
+  "Collect: https://ovhspam.example/collect"
 ].join("\n");
 
 // ---------- detection (headers alone) ----------
@@ -289,6 +339,145 @@ ok("azure details: form evidence, not the email (no greeting)",
     big.indexOf("[headers truncated at 8000 characters]") !== -1);
 })();
 
+// ---------- per-field form kits: Google / AWS / OVH ----------
+// The field maps mirror the Gmail panel's hint table — box
+// names, order, copy keys, links, and the identity wording
+// are pinned verbatim so the two panels can't drift.
+const KITS = taskpane.FORM_FIELD_KITS;
+ok("kits: exactly google, aws, ovh (azure keeps its own block)",
+  !!KITS && Object.keys(KITS).length === 3 &&
+  ["google", "aws", "ovh"].every(function (k) { return !!KITS[k]; }));
+ok("kits: google form link + service pick verbatim",
+  KITS.google.url ===
+    "https://support.google.com/code/contact/cloud_platform_report" &&
+  KITS.google.linkText ===
+    "support.google.com/code/contact/cloud_platform_report" &&
+  KITS.google.pick === "For the service question, pick Compute Engine.");
+ok("kits: aws form link verbatim",
+  KITS.aws.url === "https://repost.aws/knowledge-center/report-aws-abuse" &&
+  KITS.aws.linkText === "repost.aws/knowledge-center/report-aws-abuse");
+ok("kits: ovh form link verbatim",
+  KITS.ovh.url === "https://www.ovhcloud.com/en/abuse/" &&
+  KITS.ovh.linkText === "ovhcloud.com/en/abuse");
+function kitShape(kit) {
+  return kit.fields.map(function (f) {
+    return f.box + "|" + f.copy;
+  }).join(";");
+}
+ok("kits: google fields are the form's boxes, in order",
+  kitShape(KITS.google) ===
+  "Abuse date|date;Abuse details|googleDetails;Additional logs|logs",
+  kitShape(KITS.google));
+ok("kits: aws fields are the form's boxes, in order",
+  kitShape(KITS.aws) ===
+  "Type of abuse|null;Source IP and date/time|awsIncident;" +
+  "Log extracts|logs;URLs in the message|urls",
+  kitShape(KITS.aws));
+ok("kits: ovh fields are the form's boxes, in order",
+  kitShape(KITS.ovh) ===
+  "Category|null;Location|ip;Description|description;" +
+  "Logs / technical elements|logs",
+  kitShape(KITS.ovh));
+ok("kits: every intro keeps reporter identity with the user",
+  ["google", "aws", "ovh"].every(function (k) {
+    return KITS[k].fieldsIntro.indexOf("never prepares them") !== -1;
+  }));
+
+// ---------- kit resolution ----------
+ok("kits: tenant case never resolves a kit (guard first)",
+  taskpane.formKitKeyFor(
+    Object.assign({}, msA, { hyperscaler: "google" }),
+    { to: "google-cloud-compliance@google.com" }) === null);
+ok("kits: hyperscaler flags resolve their kits",
+  taskpane.formKitKeyFor(
+    { hyperscaler: "google", msAccountReport: false }, null) === "google" &&
+  taskpane.formKitKeyFor(
+    { hyperscaler: "aws", msAccountReport: false }, null) === "aws");
+ok("kits: azure alone is not a stepped kit (its own block)",
+  taskpane.formKitKeyFor(
+    { hyperscaler: "azure", msAccountReport: false },
+    { to: "abuse@microsoft.com" }) === null);
+ok("kits: OVH resolves off the complaint contact / org match",
+  taskpane.formKitKeyFor(
+    { msAccountReport: false, org: "OVH SAS" },
+    { to: "abuse@ovh.net" }) === "ovh");
+ok("kits: hyperscaler wins over an OVH-looking contact",
+  taskpane.formKitKeyFor(
+    { hyperscaler: "aws", msAccountReport: false },
+    { to: "abuse@ovh.net" }) === "aws");
+ok("kits: a normal sender resolves no kit",
+  taskpane.formKitKeyFor(normalA, normalComplaint) === null);
+ok("pane: stepped kits render inside the complaint section",
+  taskpaneSrc.indexOf("formKitKeyFor(a, c)") !== -1 &&
+  taskpaneSrc.indexOf("sf-form-fields") !== -1 &&
+  taskpaneSrc.indexOf("form, field by field") !== -1);
+ok("pane: step copy buttons ride the engine's field builder",
+  taskpaneSrc.indexOf("SpamAvenger.buildFormFieldEvidence") !== -1 &&
+  taskpaneSrc.indexOf('"Copy for the " + fld.box + " field"') !== -1);
+ok("pane: the old OVH warning note is gone (kit subsumes it)",
+  taskpaneSrc.indexOf("ignores emailed complaints") === -1 &&
+  taskpaneSrc.indexOf("sf-ovh-btn") === -1);
+
+// ---------- the field slices (shared engine builder) ----------
+const googleA = analyze.analyze(GOOGLE_RAW);
+const awsA = analyze.analyze(AWS_RAW);
+const ovhA = analyze.analyze(OVH_RAW);
+ok("slices: traced IPs land on the fixture addresses",
+  googleA.ip === "198.51.100.23" && awsA.ip === "192.0.2.55" &&
+  ovhA.ip === "198.51.100.77",
+  [googleA.ip, awsA.ip, ovhA.ip].join(","));
+ok("slice date: ISO day for Google's date box",
+  taskpane.formFieldText(googleA, "date") === "2026-10-30",
+  taskpane.formFieldText(googleA, "date"));
+const gdSlice = taskpane.formFieldText(googleA, "googleDetails");
+ok("slice googleDetails: capped at the form's 1,000 chars",
+  gdSlice.length > 0 && gdSlice.length <= 1000,
+  "len=" + gdSlice.length);
+ok("slice googleDetails: facts + defanged links, headers NOT here",
+  gdSlice.indexOf("Source IP: 198.51.100.23") !== -1 &&
+  gdSlice.indexOf(
+    "hxxps://storage[.]googleapis[.]com/prize-bucket/claim.html") !== -1 &&
+  gdSlice.indexOf("Full headers") === -1 &&
+  gdSlice.indexOf("logs file") !== -1);
+const awSlice = taskpane.formFieldText(awsA, "awsIncident");
+ok("slice awsIncident: AWS's incident lines, ISO 8601 + UTC",
+  awSlice.indexOf("Type of abuse: Spam / phishing email") === 0 &&
+  awSlice.indexOf(
+    "Date/time of incident (ISO 8601): 2026-11-01T08:15:00.000Z") !== -1 &&
+  awSlice.indexOf("Time zone: UTC") !== -1 &&
+  awSlice.indexOf("Source IP address: 192.0.2.55") !== -1);
+ok("slice urls: RAW, one per line (a URL box wants literals)",
+  taskpane.formFieldText(awsA, "urls") ===
+  "http://win-big.example.net/claim\nhttps://cdn.example.net/x.js",
+  JSON.stringify(taskpane.formFieldText(awsA, "urls")));
+ok("slice ip: the bare IP for OVHcloud's Location box",
+  taskpane.formFieldText(ovhA, "ip") === "198.51.100.77");
+const deSlice = taskpane.formFieldText(ovhA, "description");
+ok("slice description: facts only — no headers ride in it",
+  deSlice.indexOf("Source IP: 198.51.100.77") !== -1 &&
+  deSlice.indexOf("hxxps://ovhspam[.]example/collect") !== -1 &&
+  deSlice.indexOf("Full headers") === -1 &&
+  deSlice.length <= 4000, "len=" + deSlice.length);
+const logSlice = taskpane.formFieldText(ovhA, "logs");
+ok("slice logs: Received line + full headers",
+  logSlice.indexOf("Received: from mail.ovhspam.example") === 0 &&
+  logSlice.indexOf("Full headers (plain text, as received):") !== -1);
+ok("slices: unbuildable slices come back empty (step skipped)",
+  taskpane.formFieldText(
+    Object.assign({}, awsA, { urls: [] }), "urls") === "" &&
+  taskpane.formFieldText(
+    Object.assign({}, ovhA, { date: "not a date" }), "date") === "");
+(function () {
+  const filler = [];
+  for (let i = 0; i < 300; i++) {
+    filler.push("X-Filler-" + i + ": " + new Array(61).join("x"));
+  }
+  const big = taskpane.formFieldText(Object.assign({},
+    ovhA, { fullHeaders: filler.join("\n") }), "logs");
+  ok("slice logs: headers capped like the complaint (8000)",
+    big.indexOf("[headers truncated at 8000 characters]") !== -1);
+})();
+
 // ---------- domainNoWebsite verdicts (stubbed DNS) ----------
 function dnsStub(table, defaultPayload) {
   return function (url) {
@@ -328,6 +517,46 @@ const RDAP_AZURE = {
        ["email", {}, "text", "abuse@microsoft.com"]]] },
     { roles: ["registrant"], vcardArray: ["vcard",
       [["fn", {}, "text", "Microsoft Corporation"]]] }
+  ]
+};
+
+// A Google Cloud allocation's RDAP shape: GOOGLE-CLOUD net
+// name, the GC Abuse POC — hyperscalerOf reads this as
+// "google", and the complaint desk is Cloud Compliance.
+const RDAP_GOOGLE = {
+  name: "GOOGLE-CLOUD",
+  entities: [
+    { roles: ["abuse"], vcardArray: ["vcard",
+      [["fn", {}, "text", "GC Abuse"],
+       ["email", {}, "text", "google-cloud-compliance@google.com"]]] },
+    { roles: ["registrant"], vcardArray: ["vcard",
+      [["fn", {}, "text", "Google LLC"]]] }
+  ]
+};
+
+// An AWS allocation's RDAP shape: AMAZON net name, the
+// Amazon EC2 Abuse POC — hyperscalerOf reads this as "aws".
+const RDAP_AWS = {
+  name: "AMAZON-EC2-USE1",
+  entities: [
+    { roles: ["abuse"], vcardArray: ["vcard",
+      [["fn", {}, "text", "Amazon EC2 Abuse"],
+       ["email", {}, "text", "ec2-abuse@amazon.com"]]] },
+    { roles: ["registrant"], vcardArray: ["vcard",
+      [["fn", {}, "text", "Amazon Technologies, Inc."]]] }
+  ]
+};
+
+// An OVHcloud allocation's RDAP shape: no hyperscaler
+// identity at all — the OVH kit resolves off the abuse
+// contact / registrant match instead.
+const RDAP_OVH = {
+  name: "OVH",
+  entities: [
+    { roles: ["abuse"], vcardArray: ["vcard",
+      [["email", {}, "text", "abuse@ovh.net"]]] },
+    { roles: ["registrant"], vcardArray: ["vcard",
+      [["fn", {}, "text", "OVH SAS"]]] }
   ]
 };
 
@@ -465,6 +694,60 @@ async function run() {
     invF.complaint.to === "phish@office365.microsoft.com",
     JSON.stringify({ hyper: invF.hyperscaler,
       to: invF.complaint && invF.complaint.to }));
+
+  // G: Google Cloud spam — the hyperscaler fires, the host
+  // complaint to Cloud Compliance stands, and the pane
+  // resolves the Google stepped kit.
+  global.fetch = pipeStub({ rdap: RDAP_GOOGLE,
+    ptr: "23.100.51.198.bc.googleusercontent.com." });
+  const invG = await analyze.investigate(GOOGLE_RAW);
+  ok("investigate: Google Cloud spam flags the hyperscaler",
+    invG.hyperscaler === "google", "got " + invG.hyperscaler);
+  ok("investigate: Google complaint goes to Cloud Compliance",
+    !!invG.complaint &&
+    invG.complaint.to === "google-cloud-compliance@google.com",
+    invG.complaint && invG.complaint.to);
+  ok("investigate: pane resolves the Google kit",
+    taskpane.formKitKeyFor(invG, invG.complaint) === "google");
+
+  // H: AWS spam — same shape, the EC2 abuse desk.
+  global.fetch = pipeStub({ rdap: RDAP_AWS,
+    ptr: "ec2-192-0-2-55.compute-1.amazonaws.com." });
+  const invH = await analyze.investigate(AWS_RAW);
+  ok("investigate: AWS spam flags the hyperscaler",
+    invH.hyperscaler === "aws", "got " + invH.hyperscaler);
+  ok("investigate: AWS complaint goes to the EC2 abuse desk",
+    !!invH.complaint && invH.complaint.to === "ec2-abuse@amazon.com",
+    invH.complaint && invH.complaint.to);
+  ok("investigate: pane resolves the AWS kit",
+    taskpane.formKitKeyFor(invH, invH.complaint) === "aws");
+
+  // I: OVHcloud spam — no hyperscaler flag (OVH is not one);
+  // the kit resolves off the complaint contact instead.
+  global.fetch = pipeStub({ rdap: RDAP_OVH,
+    ptr: "mail.ovhspam.example." });
+  const invI = await analyze.investigate(OVH_RAW);
+  ok("investigate: OVH spam has no hyperscaler flag",
+    !invI.hyperscaler, "got " + invI.hyperscaler);
+  ok("investigate: OVH complaint goes to abuse@ovh.net",
+    !!invI.complaint && invI.complaint.to === "abuse@ovh.net",
+    invI.complaint && invI.complaint.to);
+  ok("investigate: pane resolves the OVH kit off the contact",
+    taskpane.formKitKeyFor(invI, invI.complaint) === "ovh");
+
+  // J: the tenant case wearing a Google Cloud RDAP — the
+  // hyperscaler fires, but the guard keeps the account
+  // report on the phishing desk and no kit resolves.
+  global.fetch = pipeStub({ rdap: RDAP_GOOGLE,
+    ptr: "mail-centralusazon11021138.outbound.protection.outlook.com." });
+  const invJ = await analyze.investigate(MS_RAW);
+  ok("investigate: tenant case + Google RDAP stays on the phishing desk",
+    invJ.msAccountReport === true && invJ.hyperscaler === "google" &&
+    !!invJ.complaint &&
+    invJ.complaint.to === "phish@office365.microsoft.com" &&
+    taskpane.formKitKeyFor(invJ, invJ.complaint) === null,
+    JSON.stringify({ hyper: invJ.hyperscaler,
+      to: invJ.complaint && invJ.complaint.to }));
 
   console.log("\n" + pass + " passed, " + fail + " failed");
   process.exit(fail ? 1 : 0);

@@ -925,6 +925,165 @@
     return L.join("\n");
   }
 
+  // Per-field form evidence (v1.0.69, combined build): the
+  // Google Cloud / AWS / OVHcloud abuse forms do NOT share the
+  // MSRC form's shape — each splits the report across its own
+  // boxes (verified against the live forms and the providers'
+  // own reporting docs, 2026-11-02). One paste block fits none
+  // of them: Google caps its "Abuse details" box at 1,000
+  // characters and takes the headers as an uploaded log file
+  // instead; AWS asks for the incident as log-style lines
+  // (source IP, ISO date/time, time zone) plus log extracts;
+  // OVHcloud asks for a location (IP or URL), a description it
+  // forwards to the service owner, and logs/technical elements
+  // separately. So the panel's form kits declare their form's
+  // fields (content.js HYPER_FORM_HINTS `fields`) and each
+  // field's Copy button carries the slice built here, keyed by
+  // the field's `copy` name:
+  //   "ip"            the bare source IP (a location/IP box)
+  //   "date"          the message day, ISO YYYY-MM-DD (a date box)
+  //   "urls"          the message's URLs, one per line, RAW —
+  //                   a dedicated URL box is where the desk
+  //                   needs the literal addresses (same call as
+  //                   the Safe Browsing lane's URL box), cap 10
+  //   "googleDetails" the facts sized for Google's 1,000-char
+  //                   details box: summary, IP, From/Subject,
+  //                   defanged links that fit; headers are NOT
+  //                   here — they ride the logs upload instead
+  //   "awsIncident"   AWS's incident lines: type, ISO 8601
+  //                   date/time, time zone (UTC), source IP,
+  //                   claimed sender, subject
+  //   "logs"          the log slice: the ingress Received line
+  //                   plus the full headers (trimHeaders, the
+  //                   usual 8000 cap) — an email's log extract
+  //   "description"   a facts-only narrative for OVHcloud's
+  //                   description box: what arrived, from
+  //                   where, when, the defanged links, a body
+  //                   excerpt; no headers (the logs field
+  //                   carries them) and no reporter identity —
+  //                   OVHcloud transfers the description to the
+  //                   service owner, so it is facts only
+  // Returns the slice text, or null when the slice cannot be
+  // built (no traced IP, no URLs for "urls", no headers or
+  // Received line for "logs", an unparseable date for "date") —
+  // the panel skips a step whose slice is null. Reporter-
+  // identity fields are never built here at all: name/email
+  // boxes on these forms are the user's own to fill in.
+  function isoDayStamp(s) {
+    var d = new Date(String(s || "").trim());
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString().slice(0, 10);
+  }
+  function isoFullStamp(s) {
+    var d = new Date(String(s || "").trim());
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString();
+  }
+  function buildFormFieldEvidence(a, key) {
+    if (!a || !a.ip) return null;
+    if (key === "ip") return a.ip;
+    if (key === "date") return isoDayStamp(a.date);
+    if (key === "urls") {
+      if (!a.urls || !a.urls.length) return null;
+      return a.urls.slice(0, 10).join("\n");
+    }
+    if (key === "googleDetails") {
+      var gd = [];
+      gd.push("Spam/phishing email received from IP address " + a.ip +
+        (a.org ? " (registered to " + a.org + ")" : "") +
+        " on " + utcStamp(a.date) + ".");
+      gd.push("Source IP: " + a.ip);
+      gd.push("From: " + (a.from || "unknown"));
+      gd.push("Subject: " + (a.subject || "unknown"));
+      if (a.urls && a.urls.length) {
+        gd.push("Links in the message (defanged \u2014 read hxxps " +
+          "as https and [.] as .):");
+        for (var gi = 0; gi < a.urls.length && gi < 10; gi++) {
+          var line = "  - " + defangUrl(a.urls[gi]);
+          if (gd.join("\n").length + line.length + 1 > 1000) break;
+          gd.push(line);
+        }
+      }
+      if (a.fullHeaders) {
+        var note = "Full message headers are in the logs file " +
+          "attached to this report (Additional logs).";
+        if (gd.join("\n").length + note.length + 1 <= 1000) gd.push(note);
+      }
+      var gout = gd.join("\n");
+      return gout.length > 1000 ? gout.slice(0, 1000) : gout;
+    }
+    if (key === "awsIncident") {
+      var aw = [];
+      aw.push("Type of abuse: Spam / phishing email");
+      aw.push("Date/time of incident (ISO 8601): " +
+        (isoFullStamp(a.date) || utcStamp(a.date)));
+      aw.push("Time zone: UTC");
+      aw.push("Source IP address: " + a.ip);
+      aw.push("Claimed sender: " + (a.from || "unknown"));
+      aw.push("Subject: " + (a.subject || "unknown"));
+      return aw.join("\n");
+    }
+    if (key === "logs") {
+      if (!a.fullHeaders && !a.ingressReceived) return null;
+      var lg = [];
+      if (a.ingressReceived) lg.push("Received: " + a.ingressReceived);
+      if (a.fullHeaders) {
+        var lth = trimHeaders(String(a.fullHeaders));
+        var lfh = lth.text;
+        var ltrunc = lfh.length > 8000;
+        if (ltrunc) lfh = lfh.slice(0, 8000);
+        if (lg.length) lg.push("");
+        lg.push("Full headers (plain text, as received):");
+        lfh.split("\n").forEach(function (ln) { lg.push(ln); });
+        if (lth.stripped) lg.push("[ARC/DKIM signature blocks omitted \u2014 routing and authentication headers are complete]");
+        if (ltrunc) lg.push("[headers truncated at 8000 characters]");
+      } else {
+        lg.push("Message-ID: " + (a.messageId || "unknown"));
+      }
+      return lg.join("\n");
+    }
+    if (key === "description") {
+      var de = [];
+      de.push("I received a spam/phishing message originating from " +
+        "your network. It was sent from IP address " + a.ip +
+        (a.org ? " (registered to " + a.org + ")" : "") +
+        " and received on " + utcStamp(a.date) + ". " +
+        "Please investigate the account or customer responsible " +
+        "and take appropriate action. The message details follow " +
+        "as evidence.");
+      de.push("");
+      de.push("Source IP: " + a.ip);
+      de.push("Server: " + displayHost(a.host));
+      de.push("Date/time (UTC): " + utcStamp(a.date));
+      de.push("From: " + (a.from || "unknown"));
+      de.push("Subject: " + (a.subject || "unknown"));
+      if (a.ingressReceived) de.push("Received: " + a.ingressReceived);
+      if (a.urls && a.urls.length) {
+        de.push("Links in message (defanged \u2014 read hxxps as " +
+          "https and [.] as .):");
+        a.urls.slice(0, 10).forEach(function (u) {
+          de.push("  - " + defangUrl(u));
+        });
+      }
+      var dout = de.join("\n");
+      if (a.bodyText) {
+        var btHead = "\n\nMessage body (plain text, links defanged):\n";
+        var room = 4000 - dout.length - btHead.length - 40;
+        if (room > 0) {
+          var dbt = defangText(String(a.bodyText));
+          var cut = dbt.length > room;
+          dout += btHead + dbt.slice(0, room) +
+            (cut ? "\n[body excerpt truncated]" : "");
+        }
+      }
+      if (dout.length > 4000) {
+        dout = dout.slice(0, 4000 - 40) + "\n[description truncated]";
+      }
+      return dout;
+    }
+    return null;
+  }
+
   // Gmail's compose-by-link (?view=cm) rejects very long URLs with a
   // bare "Error 400" — no explanation, dead end (v1.0.57 field
   // failure). Keep every compose URL under a conservative budget by
@@ -1218,7 +1377,9 @@
   var api = {
     parseHeaders: parseHeaders, originIp: originIp, isPrivateIp: isPrivateIp,
     analyze: analyze, investigate: investigate, buildComplaint: buildComplaint,
-    buildFormEvidence: buildFormEvidence, displayHost: displayHost,
+    buildFormEvidence: buildFormEvidence,
+    buildFormFieldEvidence: buildFormFieldEvidence,
+    displayHost: displayHost,
     trimHeaders: trimHeaders, fitForCompose: fitForCompose,
     composeUrl: composeUrl, COMPOSE_URL_BUDGET: COMPOSE_URL_BUDGET,
     defangUrl: defangUrl, defangText: defangText,

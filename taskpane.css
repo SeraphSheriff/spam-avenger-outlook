@@ -110,6 +110,28 @@ body {
 .sf-sbstep > b { display: block; margin-bottom: 2px; }
 .sf-sbwalk #sf-sb-url { height: 34px; }
 
+/* Per-field form kits (v1.2.3): one step per form box, each
+   step's slice in its own box at a shorter height than the
+   full-case boxes — the slices are smaller. Mirrors the
+   Gmail panel's .sf-form-fields rules. */
+.sf-form-fields { margin-top: 10px; }
+.sf-form-field { margin: 10px 0; }
+.sf-form-field > b { display: block; margin-bottom: 2px; }
+.sf-form-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: monospace;
+  font-size: 11px;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  padding: 8px;
+  margin: 6px 0;
+  height: 72px;
+  resize: vertical;
+  background: #fff;
+  color: #202124;
+}
+
 .sf-actions { display: flex; gap: 8px; margin-bottom: 6px; }
 .sf-actions button {
   flex: 1;
