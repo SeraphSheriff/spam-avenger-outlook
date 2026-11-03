@@ -70,6 +70,21 @@
  * host — asserted only on a confirmed-empty result). All other
  * senders render exactly as before.
  *
+ * v1.2.3: the abuse-complaint section also carries a small
+ * Azure form kit (Michael's live-test call, 2026-11-02). Spam
+ * traced to a computer rented on Microsoft Azure (the engine's
+ * a.hyperscaler === "azure") still draws the ordinary emailed
+ * complaint to abuse@microsoft.com — but Microsoft takes
+ * Azure abuse reports through its MSRC web form, and the form
+ * is where a case gets opened. So when Azure fires, the
+ * section adds the form link (the URL prefilled for an
+ * IP-address spam report) and a "Copy the details for the
+ * form" button carrying a paste-ready evidence block — the
+ * same facts the complaint body carries, formatted for the
+ * form's details field. The tenant-account case never gets
+ * the kit (its phishing-desk switch above owns that section),
+ * and a pool spoof never reaches this section at all.
+ *
  * Every async call is wrapped with a timeout and every failure
  * surfaces as a short user-readable line carrying the version
  * tag — the pane never hangs silently.
@@ -339,6 +354,29 @@
     return L.join("\n");
   }
 
+  // The Azure form kit (v1.2.3): Microsoft takes abuse reports
+  // for Azure through the MSRC web form. This URL lands on that
+  // form prefilled for an IP-address spam report — keep it
+  // EXACTLY as given (Michael's call, 2026-11-02: hand the user
+  // the link itself, not directions to go find it).
+  var AZURE_FORM_URL = "https://msrc.microsoft.com/report/abuse" +
+    "?ThreatType=IpAddress&IncidentType=Spam";
+
+  // The paste-ready evidence block for the form's details
+  // field: the shared engine's form-evidence builder with its
+  // mirrorComplaint option — the same block the Gmail panel's
+  // Azure kit pastes into this form, so the two panels' form
+  // evidence can't drift apart. It carries the facts the
+  // emailed complaint body carries (source IP, date, From,
+  // Subject, server, the defanged links) plus the full
+  // headers with the complaint's own treatment (signature
+  // blocks stripped, capped at the same 8000 chars). Nothing
+  // about the user beyond what the complaint itself already
+  // carries (there is nothing about the user in either).
+  function azureFormDetailsText(a) {
+    return SpamAvenger.buildFormEvidence(a, { mirrorComplaint: true }) || "";
+  }
+
   // Safe Browsing's details box is small (the Gmail reportfill
   // lane budgets 800 chars for it), so this lane gets its own
   // SHORT summary instead of the full case text: who it claims to
@@ -586,9 +624,64 @@
         }, "ovhcloud.com/en/abuse"));
         cw.appendChild(ovhNote);
       }
-      // v1.2.1: no Copy button here — same pattern as the
-      // Forward section. The compose IS the action; the text box
-      // above is there to read (and remains selectable by hand).
+      // Azure form kit (v1.2.3, Michael's live-test call
+      // 2026-11-02): when the trace lands on a computer rented
+      // on Microsoft Azure (the engine's hyperscaler flag, the
+      // same resolution the Gmail panel uses for its form
+      // hints), add the MSRC form lane INSIDE this section —
+      // the emailed complaint above stays exactly as it is;
+      // the kit is an addition, not a replacement, and NOT a
+      // new section (the pane stays at six). The form link is
+      // printed in full so it can be copied by hand too. The
+      // tenant-account case is excluded outright: its report
+      // goes to the phishing desk about the account, never to
+      // the Azure form (a pool IP's RDAP can read as a
+      // Microsoft block, but a mailbox tenant is not a rented
+      // Azure VM — the Gmail panel's v1.0.67 guard, mirrored).
+      if (a.hyperscaler === "azure" && !a.msAccountReport) {
+        cw.appendChild(h("p", { "class": "sf-note" },
+          "This spam came from a computer rented on Microsoft " +
+          "Azure. Microsoft takes abuse reports for Azure " +
+          "through its web form \u2014 the form is where a case " +
+          "gets opened:"));
+        var azLinkP = h("p", { "class": "sf-formlink" });
+        azLinkP.appendChild(h("a", {
+          href: AZURE_FORM_URL, target: "_blank", rel: "noopener"
+        }, AZURE_FORM_URL));
+        cw.appendChild(azLinkP);
+        var azTa = h("textarea", { id: "sf-azure-form-text" });
+        azTa.readOnly = true;
+        azTa.value = azureFormDetailsText(a);
+        cw.appendChild(h("div", { "class": "sf-casebox" },
+          h("b", null,
+            "Details for the form \u2014 paste into the form's " +
+            "details field:"),
+          azTa));
+        var azStatus = secStatus("sf-azure-status");
+        var azCopyBtn = h("button", { id: "sf-azure-copy",
+          "class": "sf-btn-green", "type": "button" },
+          "Copy the details for the form");
+        azCopyBtn.addEventListener("click", function () {
+          copyText(azTa.value, azStatus, {
+            selectEl: azTa,
+            successText: "\u2713 Copied \u2014 open the Microsoft " +
+              "form with the link above, click its details " +
+              "field and press Ctrl+V (" + TAG + ").",
+            manualText: "\u26a0 Copy didn't take \u2014 the details " +
+              "in the box above are selected: press Ctrl+C, " +
+              "then paste them into the form's details field " +
+              "with Ctrl+V (" + TAG + ")."
+          });
+        });
+        cw.appendChild(h("div", { "class": "sf-actions" }, azCopyBtn));
+        cw.appendChild(azStatus);
+      }
+      // v1.2.1: no Copy button for the COMPLAINT here — same
+      // pattern as the Forward section. The compose IS the
+      // action; the text box above is there to read (and remains
+      // selectable by hand). (The Azure kit's button above is a
+      // different animal: it copies the FORM details, which
+      // have no compose to ride — the FTC lane's pattern.)
       var compBtn = h("button", { id: "sf-compose",
         "class": "sf-btn-green", "type": "button" },
         "Open in Outlook — just click Send");
@@ -1102,6 +1195,8 @@
     module.exports = {
       copyText: copyText,
       caseDetailsText: caseDetailsText,
+      azureFormDetailsText: azureFormDetailsText,
+      AZURE_FORM_URL: AZURE_FORM_URL,
       sbDetailsText: sbDetailsText,
       SB_NO_LINKS: SB_NO_LINKS,
       SB_INSTRUCTIONS: SB_INSTRUCTIONS,

@@ -22,7 +22,12 @@ stays focused on what you're doing.
   DMARC all passing — the complaint is addressed to Microsoft's
   phishing desk (phish@office365.microsoft.com) and reports the
   account itself, since a host complaint against the shared IP
-  would reach the wrong target.
+  would reach the wrong target. And when spam traces to a
+  computer rented on Microsoft Azure, the same section adds a
+  small form kit — Microsoft's abuse-form link (prefilled for
+  an IP-address spam report) plus a copy-ready details block —
+  because Microsoft opens Azure abuse cases from its web form;
+  the emailed complaint stays as well.
 - **Report it** — *Report to FTC* and *Report to Google Safe
   Browsing* walk you through the form from inside their sections:
   the "Open the … form" button opens the form and the case details

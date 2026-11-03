@@ -875,6 +875,15 @@
   // blocks stripped, capped), so the paste stays shippable.
   // Returns the block text, or null when there is no traced IP
   // to report.
+  //
+  // v1.0.69: opts.mirrorComplaint (the Azure/MSRC kit) adds the
+  // two labeled facts the emailed complaint carries that the
+  // standard block omits — the server name and the defanged
+  // links (same slice cap of 10, same defangUrl) — so the block
+  // pasted into the MSRC form's details field mirrors the
+  // complaint's evidence. The headers treatment is unchanged
+  // (trimHeaders, same 8000 cap). Default off: the other form
+  // kits' blocks stay byte-identical to before.
   function buildFormEvidence(a, opts) {
     opts = opts || {};
     var headerCap = opts.headerCap != null ? opts.headerCap : 8000;
@@ -889,10 +898,15 @@
       "full headers follow as evidence.");
     L.push("");
     L.push("Source IP: " + a.ip);
+    if (opts.mirrorComplaint) L.push("Server: " + displayHost(a.host));
     L.push("Date/time (UTC): " + utcStamp(a.date));
     L.push("From: " + (a.from || "unknown"));
     L.push("Subject: " + (a.subject || "unknown"));
     if (a.ingressReceived) L.push("Received: " + a.ingressReceived);
+    if (opts.mirrorComplaint && a.urls && a.urls.length) {
+      L.push("Links in message (defanged \u2014 read hxxps as https and [.] as .):");
+      a.urls.slice(0, 10).forEach(function (u) { L.push("  - " + defangUrl(u)); });
+    }
     L.push("");
     if (a.fullHeaders) {
       var th = trimHeaders(String(a.fullHeaders));

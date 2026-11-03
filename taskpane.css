@@ -145,6 +145,11 @@ a.sf-ovh-btn {
 }
 a.sf-ovh-btn:hover { background: #8a5c02; }
 
+/* Azure form kit (v1.2.3): the MSRC form link is printed in
+   full — prefilled URL and all — so it can also be copied by
+   hand; it wraps rather than overflowing the narrow pane. */
+.sf-formlink { margin: 4px 0 8px; font-size: 12px; word-break: break-all; }
+
 .sf-links { margin-top: 8px; }
 .sf-fine { color: #5f6368; font-size: 11px; margin-top: 8px; }
 

@@ -7,7 +7,11 @@
 // (no new section), the details Abuse contact row names the
 // phishing desk, and the details note flips via the engine's
 // msDetailsNote. The DNS "no website" tell asserts only on a
-// confirmed-empty result.
+// confirmed-empty result. The Azure form kit (Michael's second
+// live case, Nov 2 2026) is covered at the end: an Azure-hosted
+// spam keeps its emailed complaint AND flags the hyperscaler
+// the pane kit keys off; a tenant case whose RDAP reads as a
+// Microsoft cloud block still stays on the phishing desk.
 //
 // Run: node tests/test-v123-ms-account-report.js
 "use strict";
@@ -23,8 +27,12 @@ const analyze = require(path.join(ROOT, "analyze.js"));
 
 // taskpane.js boots against Office/DOM in the browser; stub the
 // one call its no-Office path makes so the harness can read its
-// exported VERSION. Nothing else in the file runs at load.
+// exported VERSION. Nothing else in the file runs at load. The
+// pane also reads the engine through the browser global
+// SpamAvenger (window.SpamAvenger, set by analyze.js there) —
+// provide it here so the pane's exported text builders run.
 global.document = { getElementById: function () { return {}; } };
+global.SpamAvenger = analyze;
 const taskpane = require(path.join(ROOT, "taskpane.js"));
 
 let pass = 0, fail = 0;
@@ -126,6 +134,22 @@ const NORMAL_RAW = [
   "Claim at https://spammy.example/win"
 ].join("\n");
 
+// Michael's second live case (Nov 2 2026): a "FINAL WARNING"
+// phish sent from a computer rented on Microsoft Azure —
+// Microsoft-owned IP, NO protection.outlook.com server, auth
+// failing. Not a tenant account: the host complaint stands,
+// and the pane adds the MSRC form kit.
+const AZURE_RAW = [
+  "Received: from mail.0gjiueaplmtubdhyxp.example ([52.242.95.45]) by mx.example with smtp",
+  "Authentication-Results: mx.example; spf=fail smtp.mailfrom=0gjiueaplmtubdhyxp.example",
+  "From: Cloud Team <vwjrt8jp@0gjiueaplmtubdhyxp.example>",
+  "Subject: FINAL WARNING regarding your account",
+  "Message-ID: <finalwarn@0gjiueaplmtubdhyxp.example>",
+  "Date: Mon, 02 Nov 2026 03:06:00 +0000",
+  "",
+  "Verify now: http://hc00brf6dp.acros.fun/cl/3147_rd/2007/0/280/294"
+].join("\n");
+
 // ---------- detection (headers alone) ----------
 const msA = analyze.analyze(MS_RAW);
 ok("analyze: Huber case flagged as a Microsoft account report",
@@ -216,6 +240,55 @@ ok("pane: complaint compose still goes through displayNewMessageForm",
   taskpaneSrc.indexOf("displayNewMessageForm") !== -1 &&
   taskpaneSrc.indexOf("toRecipients: [c.to]") !== -1);
 
+// ---------- the Azure form kit (pane) ----------
+ok("azure: form URL is the exact prefilled MSRC link",
+  taskpane.AZURE_FORM_URL ===
+  "https://msrc.microsoft.com/report/abuse?ThreatType=IpAddress&IncidentType=Spam",
+  taskpane.AZURE_FORM_URL);
+ok("pane: kit triggers on the hyperscaler flag, tenant case excluded",
+  taskpaneSrc.indexOf(
+    'if (a.hyperscaler === "azure" && !a.msAccountReport)') !== -1);
+ok("pane: kit wording names the form as where a case gets opened",
+  taskpaneSrc.indexOf("computer rented on Microsoft") !== -1 &&
+  taskpaneSrc.indexOf("the form is where a case") !== -1);
+ok("pane: kit carries the form-details box and its copy button",
+  taskpaneSrc.indexOf("sf-azure-form-text") !== -1 &&
+  taskpaneSrc.indexOf("sf-azure-copy") !== -1 &&
+  taskpaneSrc.indexOf("Copy the details for the form") !== -1);
+ok("pane: kit link is the printed URL itself, opened in a new tab",
+  taskpaneSrc.indexOf("}, AZURE_FORM_URL));") !== -1 &&
+  taskpaneSrc.indexOf('href: AZURE_FORM_URL') !== -1);
+
+const azureA = analyze.analyze(AZURE_RAW);
+ok("analyze: Azure spam traces to the Azure IP, not the tenant case",
+  azureA.ip === "52.242.95.45" && azureA.msAccountReport === false,
+  "ip=" + azureA.ip + " ms=" + azureA.msAccountReport);
+const azDetails = taskpane.azureFormDetailsText(
+  Object.assign({}, azureA, { host: "mail.0gjiueaplmtubdhyxp.example" }));
+ok("azure details: the form facts ride in the block",
+  azDetails.indexOf("Source IP: 52.242.95.45") !== -1 &&
+  azDetails.indexOf("Date/time (UTC): Mon, 02 Nov 2026 03:06:00 UTC") !== -1 &&
+  azDetails.indexOf("From: Cloud Team <vwjrt8jp@0gjiueaplmtubdhyxp.example>") !== -1 &&
+  azDetails.indexOf("Subject: FINAL WARNING regarding your account") !== -1 &&
+  azDetails.indexOf("Server: mail.0gjiueaplmtubdhyxp.example") !== -1);
+ok("azure details: links defanged, full headers attached",
+  azDetails.indexOf("hxxp://hc00brf6dp[.]acros[.]fun/cl/3147_rd/2007/0/280/294") !== -1 &&
+  azDetails.indexOf("http://hc00brf6dp.acros.fun") === -1 &&
+  azDetails.indexOf("Full headers (plain text, as received):") !== -1 &&
+  azDetails.indexOf("Received: from mail.0gjiueaplmtubdhyxp.example") !== -1);
+ok("azure details: form evidence, not the email (no greeting)",
+  azDetails.indexOf("Hello Abuse Team") === -1);
+(function () {
+  const filler = [];
+  for (let i = 0; i < 300; i++) {
+    filler.push("X-Filler-" + i + ": " + new Array(61).join("x"));
+  }
+  const big = taskpane.azureFormDetailsText(Object.assign({},
+    azureA, { fullHeaders: filler.join("\n") }));
+  ok("azure details: headers capped like the complaint (8000)",
+    big.indexOf("[headers truncated at 8000 characters]") !== -1);
+})();
+
 // ---------- domainNoWebsite verdicts (stubbed DNS) ----------
 function dnsStub(table, defaultPayload) {
   return function (url) {
@@ -241,6 +314,20 @@ const RDAP_SPAMMY = {
       [["email", {}, "text", "abuse@spammy.example"]]] },
     { roles: ["registrant"], vcardArray: ["vcard",
       [["fn", {}, "text", "Spammy LLC"]]] }
+  ]
+};
+
+// An Azure allocation's RDAP shape: MSFT net name registered
+// to Microsoft Corporation, general Microsoft abuse desk —
+// hyperscalerOf reads this as "azure".
+const RDAP_AZURE = {
+  name: "MSFT",
+  entities: [
+    { roles: ["abuse"], vcardArray: ["vcard",
+      [["fn", {}, "text", "Microsoft Abuse Contact"],
+       ["email", {}, "text", "abuse@microsoft.com"]]] },
+    { roles: ["registrant"], vcardArray: ["vcard",
+      [["fn", {}, "text", "Microsoft Corporation"]]] }
   ]
 };
 
@@ -343,6 +430,41 @@ async function run() {
     queried.indexOf("spammy.example/A") === -1 &&
     queried.indexOf("www.spammy.example/A") === -1,
     queried.join(","));
+  ok("investigate: normal sender has no hyperscaler flag (no form kit)",
+    !invC.hyperscaler, "got " + invC.hyperscaler);
+
+  // E: Azure-hosted spam — the emailed complaint stays, the
+  // hyperscaler flag fires for the pane's form kit.
+  global.fetch = pipeStub({ rdap: RDAP_AZURE,
+    ptr: "52-242-95-45.cloudapp.azure.com." });
+  const invE = await analyze.investigate(AZURE_RAW);
+  ok("investigate: Azure spam flags the hyperscaler",
+    invE.hyperscaler === "azure", "got " + invE.hyperscaler);
+  ok("investigate: Azure spam is neither the tenant case nor skipped",
+    invE.msAccountReport === false && invE.skipComplaint === false);
+  ok("investigate: Azure spam keeps the emailed complaint to abuse@microsoft.com",
+    !!invE.complaint && invE.complaint.to === "abuse@microsoft.com" &&
+    invE.complaint.subject.indexOf("Network abuse complaint") === 0,
+    invE.complaint && invE.complaint.to);
+  const invEDet = taskpane.azureFormDetailsText(invE);
+  ok("investigate: Azure form details carry the traced facts",
+    invEDet.indexOf("Source IP: 52.242.95.45") !== -1 &&
+    invEDet.indexOf("hxxp://hc00brf6dp[.]acros[.]fun") !== -1 &&
+    invEDet.indexOf("Full headers") !== -1);
+
+  // F: the tenant case, but its pool IP's RDAP reads as a
+  // Microsoft cloud block — the hyperscaler fires, yet the
+  // account report still owns the lane (the pane kit's
+  // !msAccountReport guard keys off exactly this combination).
+  global.fetch = pipeStub({ rdap: RDAP_AZURE,
+    ptr: "mail-centralusazon11021138.outbound.protection.outlook.com." });
+  const invF = await analyze.investigate(MS_RAW);
+  ok("investigate: tenant case + Azure RDAP stays on the phishing desk",
+    invF.msAccountReport === true && invF.hyperscaler === "azure" &&
+    !!invF.complaint &&
+    invF.complaint.to === "phish@office365.microsoft.com",
+    JSON.stringify({ hyper: invF.hyperscaler,
+      to: invF.complaint && invF.complaint.to }));
 
   console.log("\n" + pass + " passed, " + fail + " failed");
   process.exit(fail ? 1 : 0);
