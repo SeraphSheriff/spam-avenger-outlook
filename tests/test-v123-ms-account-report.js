@@ -1,7 +1,8 @@
 // Spam Avenger for Outlook v1.2.3 — Microsoft tenant-account
 // parity with the Gmail addon's v1.0.67/v1.0.68 behavior, the
 // Azure form kit, and the per-field form kits for Google
-// Cloud / AWS / OVHcloud (Gmail v1.0.69 parity).
+// Cloud / AWS / OVHcloud (Gmail v1.0.69 parity; the Azure
+// kit's per-field MSRC steps at Gmail v1.0.70 parity).
 // The engine (analyze.js) is the unmodified Gmail build, so
 // most checks mirror the Gmail suites against the real first
 // case (Jessica Huber, Nov 2 2026); the pane checks pin the
@@ -20,12 +21,17 @@
 // after live-testing the Azure kit, extended to Google / AWS /
 // OVH) is pinned through the pane's formOnlyFor resolver plus
 // source pins on the render guards.
-// The three per-field form kits are covered after that:
+// The four per-field form kits are covered after that:
 // field maps mirrored verbatim from the Gmail panel's hint
 // table, slices from the shared engine's
 // buildFormFieldEvidence, kit resolution (hyperscaler flag,
 // OVH contact match, tenant guard over all of them), and
-// investigate() runs per host.
+// investigate() runs per host. The Azure kit's steps follow
+// the real MSRC form's order (Michael's hand filing, Nov 2
+// 2026): the full block as the Additional information
+// step's slice (that box caps at 15,000), the bare IP, the
+// UTC incident stamp for the pickers, and the short Report
+// notes slice pinned to the form's hard 2,000-char cap.
 //
 // Run: node tests/test-v123-ms-account-report.js
 "use strict";
@@ -309,13 +315,15 @@ ok("pane: kit triggers on the hyperscaler flag, tenant case excluded",
 ok("pane: kit wording names the form as where a case gets opened",
   taskpaneSrc.indexOf("computer rented on Microsoft") !== -1 &&
   taskpaneSrc.indexOf("the form is where a case") !== -1);
-ok("pane: kit carries the form-details box and its copy button",
-  taskpaneSrc.indexOf("sf-azure-form-text") !== -1 &&
-  taskpaneSrc.indexOf("sf-azure-copy") !== -1 &&
-  taskpaneSrc.indexOf("Copy the details for the form") !== -1);
-ok("pane: kit link is the printed URL itself, opened in a new tab",
-  taskpaneSrc.indexOf("}, AZURE_FORM_URL));") !== -1 &&
-  taskpaneSrc.indexOf('href: AZURE_FORM_URL') !== -1);
+ok("pane: the retired one-block azure kit is gone (steps replaced it)",
+  taskpaneSrc.indexOf("sf-azure-form-text") === -1 &&
+  taskpaneSrc.indexOf("sf-azure-copy") === -1 &&
+  taskpaneSrc.indexOf("Copy the details for the form") === -1 &&
+  taskpaneSrc.indexOf("azureFormDetailsText") === -1);
+ok("azure: kit entry carries the printed URL itself as its link",
+  taskpane.FORM_FIELD_KITS.azure.url === taskpane.AZURE_FORM_URL &&
+  taskpane.FORM_FIELD_KITS.azure.linkText ===
+    "https://msrc.microsoft.com/report/abuse?ThreatType=IpAddress&IncidentType=Spam");
 
 // ---------- form-only rendering (all four form hosts) ----------
 // Michael's call (Nov 2 2026): live-testing the Azure kit with
@@ -358,9 +366,11 @@ ok("pane: form-only section is retitled (nothing to send here)",
     guard !== -1 && box > guard && send > guard,
     "guard=" + guard + " box=" + box + " send=" + send);
 })();
-ok("pane: azure kit renders off the resolved form-only key",
+ok("pane: stepped kits render off the resolved form-only key",
   taskpaneSrc.indexOf("var formOnlyKey = formOnlyFor(a, c);") !== -1 &&
-  taskpaneSrc.indexOf("if (azureKit) {") !== -1);
+  taskpaneSrc.indexOf(
+    "var stepKitKey = formOnly ? formOnlyKey : null;") !== -1 &&
+  taskpaneSrc.indexOf("azureKit") === -1);
 ok("pane: compose listener attaches only when the button rendered",
   taskpaneSrc.indexOf("if (compBtn) {") !== -1 &&
   taskpaneSrc.indexOf("var compBtn = null;") !== -1);
@@ -369,40 +379,74 @@ const azureA = analyze.analyze(AZURE_RAW);
 ok("analyze: Azure spam traces to the Azure IP, not the tenant case",
   azureA.ip === "52.242.95.45" && azureA.msAccountReport === false,
   "ip=" + azureA.ip + " ms=" + azureA.msAccountReport);
-const azDetails = taskpane.azureFormDetailsText(
-  Object.assign({}, azureA, { host: "mail.0gjiueaplmtubdhyxp.example" }));
-ok("azure details: the form facts ride in the block",
-  azDetails.indexOf("Source IP: 52.242.95.45") !== -1 &&
-  azDetails.indexOf("Date/time (UTC): Mon, 02 Nov 2026 03:06:00 UTC") !== -1 &&
-  azDetails.indexOf("From: Cloud Team <vwjrt8jp@0gjiueaplmtubdhyxp.example>") !== -1 &&
-  azDetails.indexOf("Subject: FINAL WARNING regarding your account") !== -1 &&
-  azDetails.indexOf("Server: mail.0gjiueaplmtubdhyxp.example") !== -1);
-ok("azure details: links defanged, full headers attached",
-  azDetails.indexOf("hxxp://hc00brf6dp[.]acros[.]fun/cl/3147_rd/2007/0/280/294") !== -1 &&
-  azDetails.indexOf("http://hc00brf6dp.acros.fun") === -1 &&
-  azDetails.indexOf("Full headers (plain text, as received):") !== -1 &&
-  azDetails.indexOf("Received: from mail.0gjiueaplmtubdhyxp.example") !== -1);
-ok("azure details: form evidence, not the email (no greeting)",
-  azDetails.indexOf("Hello Abuse Team") === -1);
+const azureHost = Object.assign({}, azureA,
+  { host: "mail.0gjiueaplmtubdhyxp.example" });
+ok("slice ip: the bare IP for the MSRC Source IP box",
+  taskpane.formFieldText(azureHost, "ip") === "52.242.95.45");
+ok("slice incidentStamp: the received moment in UTC for the pickers",
+  taskpane.formFieldText(azureHost, "incidentStamp") ===
+  "Date: 2026-11-02 \u00B7 Time: 03:06 UTC\n" +
+  "Full stamp (UTC): 2026-11-02 03:06:00 UTC \u2014 in the " +
+  "form\u2019s Time zone box, pick UTC/GMT if offered.",
+  taskpane.formFieldText(azureHost, "incidentStamp"));
+ok("slice incidentStamp: unparseable date, no slice (step skipped)",
+  taskpane.formFieldText(
+    Object.assign({}, azureHost, { date: "not a date" }),
+    "incidentStamp") === "");
+const azAddl = taskpane.formFieldText(azureHost, "additionalInfo");
+ok("azure additionalInfo: the full block's facts ride in it",
+  azAddl.indexOf("Source IP: 52.242.95.45") !== -1 &&
+  azAddl.indexOf("Date/time (UTC): Mon, 02 Nov 2026 03:06:00 UTC") !== -1 &&
+  azAddl.indexOf("From: Cloud Team <vwjrt8jp@0gjiueaplmtubdhyxp.example>") !== -1 &&
+  azAddl.indexOf("Subject: FINAL WARNING regarding your account") !== -1 &&
+  azAddl.indexOf("Server: mail.0gjiueaplmtubdhyxp.example") !== -1);
+ok("azure additionalInfo: links defanged, full headers attached",
+  azAddl.indexOf("hxxp://hc00brf6dp[.]acros[.]fun/cl/3147_rd/2007/0/280/294") !== -1 &&
+  azAddl.indexOf("http://hc00brf6dp.acros.fun") === -1 &&
+  azAddl.indexOf("Full headers (plain text, as received):") !== -1 &&
+  azAddl.indexOf("Received: from mail.0gjiueaplmtubdhyxp.example") !== -1);
+ok("azure additionalInfo: form evidence, not the email (no greeting)",
+  azAddl.indexOf("Hello Abuse Team") === -1);
+const azNotes = taskpane.formFieldText(azureHost, "msrcNotes");
+ok("azure msrcNotes: short slice — narrative, facts, Received, links",
+  azNotes.indexOf("computer rented on Microsoft Azure") !== -1 &&
+  azNotes.indexOf("Source IP: 52.242.95.45") !== -1 &&
+  azNotes.indexOf("Server: mail.0gjiueaplmtubdhyxp.example") !== -1 &&
+  azNotes.indexOf("Received: from mail.0gjiueaplmtubdhyxp.example") !== -1 &&
+  azNotes.indexOf("hxxp://hc00brf6dp[.]acros[.]fun/cl/3147_rd/2007/0/280/294") !== -1);
+ok("azure msrcNotes: points at Additional information for the headers",
+  azNotes.indexOf("Full headers are in the Additional " +
+    "information field of this report.") !== -1);
+ok("azure msrcNotes: NO full headers ride in the notes slice",
+  azNotes.indexOf("Full headers (plain text") === -1);
+ok("azure msrcNotes: inside the form's hard 2,000-char cap",
+  azNotes.length > 0 && azNotes.length <= 2000,
+  "len=" + azNotes.length);
 (function () {
   const filler = [];
   for (let i = 0; i < 300; i++) {
     filler.push("X-Filler-" + i + ": " + new Array(61).join("x"));
   }
-  const big = taskpane.azureFormDetailsText(Object.assign({},
-    azureA, { fullHeaders: filler.join("\n") }));
-  ok("azure details: headers capped like the complaint (8000)",
-    big.indexOf("[headers truncated at 8000 characters]") !== -1);
+  const big = Object.assign({}, azureA,
+    { fullHeaders: filler.join("\n") });
+  const bigAddl = taskpane.formFieldText(big, "additionalInfo");
+  ok("azure additionalInfo: headers capped like the complaint (8000)",
+    bigAddl.indexOf("[headers truncated at 8000 characters]") !== -1);
+  const bigNotes = taskpane.formFieldText(big, "msrcNotes");
+  ok("azure msrcNotes: header bulk never leaks in; the cap holds",
+    bigNotes.length <= 2000 && bigNotes.indexOf("X-Filler") === -1,
+    "len=" + bigNotes.length);
 })();
 
-// ---------- per-field form kits: Google / AWS / OVH ----------
+// ---------- per-field form kits: Google / AWS / OVH / Azure ----------
 // The field maps mirror the Gmail panel's hint table — box
 // names, order, copy keys, links, and the identity wording
 // are pinned verbatim so the two panels can't drift.
 const KITS = taskpane.FORM_FIELD_KITS;
-ok("kits: exactly google, aws, ovh (azure keeps its own block)",
-  !!KITS && Object.keys(KITS).length === 3 &&
-  ["google", "aws", "ovh"].every(function (k) { return !!KITS[k]; }));
+ok("kits: exactly google, aws, ovh, azure",
+  !!KITS && Object.keys(KITS).length === 4 &&
+  ["google", "aws", "ovh", "azure"].every(
+    function (k) { return !!KITS[k]; }));
 ok("kits: google form link + service pick verbatim",
   KITS.google.url ===
     "https://support.google.com/code/contact/cloud_platform_report" &&
@@ -415,6 +459,10 @@ ok("kits: aws form link verbatim",
 ok("kits: ovh form link verbatim",
   KITS.ovh.url === "https://www.ovhcloud.com/en/abuse/" &&
   KITS.ovh.linkText === "ovhcloud.com/en/abuse");
+ok("kits: azure form link verbatim (the prefilled MSRC URL)",
+  KITS.azure.url ===
+    "https://msrc.microsoft.com/report/abuse?ThreatType=IpAddress&IncidentType=Spam" &&
+  KITS.azure.linkText === KITS.azure.url);
 function kitShape(kit) {
   return kit.fields.map(function (f) {
     return f.box + "|" + f.copy;
@@ -434,8 +482,13 @@ ok("kits: ovh fields are the form's boxes, in order",
   "Category|null;Location|ip;Description|description;" +
   "Logs / technical elements|logs",
   kitShape(KITS.ovh));
+ok("kits: azure fields are the form's boxes, in the form's order",
+  kitShape(KITS.azure) ===
+  "Additional information|additionalInfo;Source IP address|ip;" +
+  "Incident date and time|incidentStamp;Report notes|msrcNotes",
+  kitShape(KITS.azure));
 ok("kits: every intro keeps reporter identity with the user",
-  ["google", "aws", "ovh"].every(function (k) {
+  ["google", "aws", "ovh", "azure"].every(function (k) {
     return KITS[k].fieldsIntro.indexOf("never prepares them") !== -1;
   }));
 
@@ -449,10 +502,10 @@ ok("kits: hyperscaler flags resolve their kits",
     { hyperscaler: "google", msAccountReport: false }, null) === "google" &&
   taskpane.formKitKeyFor(
     { hyperscaler: "aws", msAccountReport: false }, null) === "aws");
-ok("kits: azure alone is not a stepped kit (its own block)",
+ok("kits: azure resolves its stepped kit off the hyperscaler flag",
   taskpane.formKitKeyFor(
     { hyperscaler: "azure", msAccountReport: false },
-    { to: "abuse@microsoft.com" }) === null);
+    { to: "abuse@microsoft.com" }) === "azure");
 ok("kits: OVH resolves off the complaint contact / org match",
   taskpane.formKitKeyFor(
     { msAccountReport: false, org: "OVH SAS" },
@@ -719,9 +772,10 @@ async function run() {
     !invC.hyperscaler, "got " + invC.hyperscaler);
 
   // E: Azure-hosted spam — the engine still builds the emailed
-  // complaint (the form details block mirrors it) and the
-  // hyperscaler flag fires for the pane's form kit; the pane's
-  // form-only rendering just never offers the email (case K).
+  // complaint (its block rides in the kit's Additional
+  // information step) and the hyperscaler flag fires for the
+  // pane's form kit; the pane's form-only rendering just
+  // never offers the email (case K).
   global.fetch = pipeStub({ rdap: RDAP_AZURE,
     ptr: "52-242-95-45.cloudapp.azure.com." });
   const invE = await analyze.investigate(AZURE_RAW);
@@ -733,11 +787,19 @@ async function run() {
     !!invE.complaint && invE.complaint.to === "abuse@microsoft.com" &&
     invE.complaint.subject.indexOf("Network abuse complaint") === 0,
     invE.complaint && invE.complaint.to);
-  const invEDet = taskpane.azureFormDetailsText(invE);
-  ok("investigate: Azure form details carry the traced facts",
-    invEDet.indexOf("Source IP: 52.242.95.45") !== -1 &&
-    invEDet.indexOf("hxxp://hc00brf6dp[.]acros[.]fun") !== -1 &&
-    invEDet.indexOf("Full headers") !== -1);
+  const invEAddl = taskpane.formFieldText(invE, "additionalInfo");
+  ok("investigate: Azure Additional information slice carries the facts",
+    invEAddl.indexOf("Source IP: 52.242.95.45") !== -1 &&
+    invEAddl.indexOf("hxxp://hc00brf6dp[.]acros[.]fun") !== -1 &&
+    invEAddl.indexOf("Full headers") !== -1);
+  const invENotes = taskpane.formFieldText(invE, "msrcNotes");
+  ok("investigate: Azure Report notes slice is short, header-free, capped",
+    invENotes.indexOf("Source IP: 52.242.95.45") !== -1 &&
+    invENotes.indexOf("Additional information field") !== -1 &&
+    invENotes.indexOf("Full headers (plain text") === -1 &&
+    invENotes.length <= 2000, "len=" + invENotes.length);
+  ok("investigate: pane resolves the Azure kit",
+    taskpane.formKitKeyFor(invE, invE.complaint) === "azure");
 
   // F: the tenant case, but its pool IP's RDAP reads as a
   // Microsoft cloud block — the hyperscaler fires, yet the

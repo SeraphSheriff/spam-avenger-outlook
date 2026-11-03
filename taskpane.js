@@ -70,35 +70,52 @@
  * host — asserted only on a confirmed-empty result). All other
  * senders render exactly as before.
  *
- * v1.2.3: the abuse-complaint section also carries a small
- * Azure form kit (Michael's live-test call, 2026-11-02). Spam
+ * v1.2.3: the abuse-complaint section also carries an Azure
+ * form kit (Michael's live-test call, 2026-11-02). Spam
  * traced to a computer rented on Microsoft Azure (the engine's
  * a.hyperscaler === "azure") gets the MSRC form lane: the
  * form link (the URL prefilled for an IP-address spam report)
- * and a "Copy the details for the form" button carrying a
- * paste-ready evidence block — the same facts the complaint
- * body carries, formatted for the form's details field.
- * Microsoft takes Azure abuse reports through its web form —
- * the form is where a case gets opened — so, at Michael's
- * call after live-testing the kit with both lanes showing,
- * an Azure case renders the kit ONLY: no emailed-complaint
- * box and no Open-in-Outlook send button (an email to
- * abuse@microsoft.com would go nowhere). The engine still
- * builds the complaint — the details block mirrors it — the
- * pane just doesn't offer to send it. The tenant-account
- * case never gets the kit (its phishing-desk switch above
- * owns that section), and a pool spoof never reaches this
- * section at all.
+ * and the kit below. Microsoft takes Azure abuse reports
+ * through its web form — the form is where a case gets
+ * opened — so, at Michael's call after live-testing the kit
+ * with both lanes showing, an Azure case renders the kit
+ * ONLY: no emailed-complaint box and no Open-in-Outlook send
+ * button (an email to abuse@microsoft.com would go nowhere).
+ * The engine still builds the complaint — the pane just
+ * doesn't offer to send it. The tenant-account case never
+ * gets the kit (its phishing-desk switch above owns that
+ * section), and a pool spoof never reaches this section at
+ * all. The kit began as one details block mirroring the
+ * complaint; Michael then filed the form by hand and
+ * screenshotted both of its steps (2026-11-02). The form
+ * has TWO text boxes: the Contact Information step's
+ * Additional information box caps at 15,000 characters —
+ * the mirror block (8000-char header cap) fits it (his
+ * paste used about 9,200) — and the Report Details step's
+ * Report notes box caps at 2,000, which the block could
+ * never fit. So the Azure kit is now per-field steps like
+ * the other three (Gmail v1.0.70 parity), in the form's
+ * order: the mirror block stays as the Additional
+ * information step's slice, then the bare IP for the
+ * Source IP box (the port and destination boxes are
+ * optional), the received moment in UTC for the Incident
+ * date / time / Time zone pickers, and a short notes slice
+ * the engine builds to the hard 2,000-character cap (facts
+ * and defanged links, no headers — those ride in the
+ * Additional information paste). The old standalone
+ * copy-details button is retired; the steps carry their
+ * own copy buttons.
  *
  * v1.2.3: the same section also carries per-field form kits
  * for the other three form hosts — Google Cloud, Amazon AWS,
  * and OVHcloud (Gmail v1.0.69 parity, Michael's call,
- * 2026-11-02: build all three at once). Those forms split a
- * report across their own boxes, so instead of one paste
- * block each kit walks the form field by field: every step
- * names the form's box, says the one thing to do with it,
- * and — where the box takes a paste — shows that field's
- * evidence slice (the shared engine's
+ * 2026-11-02: build all three at once; Azure joined them as
+ * a stepped kit at the v1.0.70 parity rework above). Those
+ * forms split a report across their own boxes, so instead
+ * of one paste block each kit walks the form field by
+ * field: every step names the form's box, says the one
+ * thing to do with it, and — where the box takes a paste —
+ * shows that field's evidence slice (the shared engine's
  * buildFormFieldEvidence) with its own Copy button. The
  * field maps mirror the Gmail panel's HYPER_FORM_HINTS
  * entries and OVH hint verbatim, so the two panels can't
@@ -106,15 +123,15 @@
  * own — each kit's intro says so, and no step ever prepares
  * them. The tenant-account case never gets a kit. And, by
  * the same Michael call as the Azure suppression (extended
- * to all four form hosts minutes later), a Google / AWS /
- * OVHcloud case is likewise kit-only in this section: no
- * emailed-complaint box, no send button — matching the
- * Gmail panel, which has built no email for form hosts
- * since its v1.0.64. Only the tenant case and ordinary
- * senders keep the emailed complaint and its compose. For
- * OVHcloud the kit also replaces the older warning note
- * that used to render in this section — the kit carries
- * the form link the note pointed at, plus the steps.
+ * to all four form hosts minutes later), every form-host
+ * case is kit-only in this section: no emailed-complaint
+ * box, no send button — matching the Gmail panel, which
+ * has built no email for form hosts since its v1.0.64.
+ * Only the tenant case and ordinary senders keep the
+ * emailed complaint and its compose. For OVHcloud the kit
+ * also replaces the older warning note that used to render
+ * in this section — the kit carries the form link the note
+ * pointed at, plus the steps.
  *
  * Every async call is wrapped with a timeout and every failure
  * surfaces as a short user-readable line carrying the version
@@ -393,42 +410,36 @@
   var AZURE_FORM_URL = "https://msrc.microsoft.com/report/abuse" +
     "?ThreatType=IpAddress&IncidentType=Spam";
 
-  // The paste-ready evidence block for the form's details
-  // field: the shared engine's form-evidence builder with its
-  // mirrorComplaint option — the same block the Gmail panel's
-  // Azure kit pastes into this form, so the two panels' form
-  // evidence can't drift apart. It carries the facts the
-  // emailed complaint body carries (source IP, date, From,
-  // Subject, server, the defanged links) plus the full
-  // headers with the complaint's own treatment (signature
-  // blocks stripped, capped at the same 8000 chars). Nothing
-  // about the user beyond what the complaint itself already
-  // carries (there is nothing about the user in either).
-  function azureFormDetailsText(a) {
-    return SpamAvenger.buildFormEvidence(a, { mirrorComplaint: true }) || "";
-  }
-
-  // Per-field form kits (v1.2.3, Gmail v1.0.69 parity): the
-  // Google Cloud, AWS, and OVHcloud abuse forms split a
-  // report across their own boxes — one paste block fits
-  // none of them (Google caps its details box at 1,000
-  // characters and takes headers as an uploaded log file;
-  // AWS asks for incident lines plus log extracts;
-  // OVHcloud wants a location, a description it forwards
-  // to the service owner, and logs separately). So each kit
-  // below declares its form's fields, and each field's Copy
+  // Per-field form kits (v1.2.3, Gmail v1.0.69 parity; the
+  // Azure kit joined them at the Gmail v1.0.70 parity
+  // rework): the Google Cloud, AWS, OVHcloud, and MSRC
+  // abuse forms split a report across their own boxes —
+  // one paste block fits none of them (Google caps its
+  // details box at 1,000 characters and takes headers as
+  // an uploaded log file; AWS asks for incident lines plus
+  // log extracts; OVHcloud wants a location, a description
+  // it forwards to the service owner, and logs separately;
+  // the MSRC form's two text boxes cap at 15,000 and 2,000
+  // characters on two different steps). So each kit below
+  // declares its form's fields, and each field's Copy
   // button carries the evidence slice the shared engine
   // builds for that box (buildFormFieldEvidence, keyed by
   // the field's `copy` name; a null `copy` is a pick-only
-  // step — guidance, nothing to paste). The label / url /
-  // linkText / pick / fieldsIntro / fields values mirror
-  // the Gmail panel's HYPER_FORM_HINTS entries and its OVH
-  // hint VERBATIM, so the two panels can't drift; only the
-  // `intro` line is Outlook's own (each kit opens with a
-  // line naming the host and saying its reports go through
-  // the web form). The forms' name/email boxes are the
-  // reporter's own — each fieldsIntro says so, and no step
-  // ever prepares identity fields.
+  // step — guidance, nothing to paste). The Azure kit's
+  // first step (copy key "additionalInfo") carries the
+  // full details block the v1.0.69 kit showed on its own —
+  // the engine's buildFormEvidence with its mirrorComplaint
+  // option, the same block the Gmail panel's Azure kit
+  // pastes, so the two panels' form evidence can't drift
+  // apart. The label / url / linkText / pick / fieldsIntro
+  // / fields values mirror the Gmail panel's
+  // HYPER_FORM_HINTS entries and its OVH hint VERBATIM, so
+  // the two panels can't drift; only the `intro` line is
+  // Outlook's own (each kit opens with a line naming the
+  // host and saying its reports go through the web form).
+  // The forms' name/email boxes are the reporter's own —
+  // each fieldsIntro says so, and no step ever prepares
+  // identity fields.
   var FORM_FIELD_KITS = {
     google: { label: "Google Cloud",
       url: "https://support.google.com/code/contact/cloud_platform_report",
@@ -524,7 +535,48 @@
             "the message's Received line and full headers " +
             "\u2014 give it a once-over for your own address " +
             "before you submit.",
-          copy: "logs" } ] }
+          copy: "logs" } ] },
+    azure: { label: "Microsoft Azure",
+      url: AZURE_FORM_URL,
+      linkText: AZURE_FORM_URL,
+      intro: "This spam came from a computer rented on " +
+        "Microsoft Azure. Microsoft takes abuse reports " +
+        "for Azure through its web form \u2014 the form is " +
+        "where a case gets opened:",
+      fieldsIntro: "The form's Contact Information step " +
+        "comes first \u2014 its name and email boxes are " +
+        "yours to fill in, and Spam Avenger never prepares " +
+        "them. The steps below cover the form's evidence " +
+        "boxes, in the form's order.",
+      fields: [
+        { box: "Additional information",
+          help: "On the form's Contact Information step. " +
+            "This is the big paste: the full report, with " +
+            "the complete headers. The box caps at 15,000 " +
+            "characters, and this copy fits it.",
+          copy: "additionalInfo" },
+        { box: "Source IP address",
+          help: "On the Report Details step, the form gives " +
+            "the source IP its own box. The Source port, " +
+            "Destination IP address, and Destination port " +
+            "boxes are optional \u2014 for email spam, leave " +
+            "them blank.",
+          copy: "ip" },
+        { box: "Incident date and time",
+          help: "The form splits this into three required " +
+            "boxes: Incident date, Incident time, and Time " +
+            "zone. The box below gives the message's moment " +
+            "in UTC \u2014 set the form's date and time boxes " +
+            "from it, and pick UTC/GMT in the Time zone box " +
+            "if it's offered.",
+          copy: "incidentStamp" },
+        { box: "Report notes",
+          help: "On the Report Details step. This box caps " +
+            "at 2,000 characters, so this copy is the short " +
+            "version: the facts and the defanged links, no " +
+            "headers \u2014 the full headers ride in the " +
+            "Additional information paste above.",
+          copy: "msrcNotes" } ] }
   };
 
   // Which stepped kit a traced message gets, mirroring the
@@ -532,34 +584,33 @@
   // tenant-account case never gets one (its phishing-desk
   // switch owns the section); a hyperscaler flag wins over
   // the OVH contact/org match (the networks are disjoint in
-  // practice). Azure is NOT resolved here — its one-field
-  // kit above is a separate block. Returns "google" | "aws"
-  // | "ovh" | null.
+  // practice). Returns "google" | "aws" | "azure" | "ovh"
+  // | null.
   function formKitKeyFor(a, c) {
     if (!a || a.msAccountReport) return null;
-    if (a.hyperscaler === "google" || a.hyperscaler === "aws") {
+    if (a.hyperscaler === "google" || a.hyperscaler === "aws" ||
+        a.hyperscaler === "azure") {
       return a.hyperscaler;
     }
     if (c && /ovh/i.test(c.to + " " + (a.org || ""))) return "ovh";
     return null;
   }
 
-  // Which form-only case a traced message is, if any: the
-  // Azure one-field kit or one of the stepped kits. When this
-  // resolves, the complaint section renders the kit ONLY —
-  // no emailed-complaint box, no Open-in-Outlook send button
-  // (Michael's call, 2026-11-02, after live-testing the Azure
-  // kit with both lanes showing: an emailed complaint to a
-  // form host goes nowhere — extended the same evening to
-  // all four form hosts, matching the Gmail panel, which has
-  // built no email for form hosts since its v1.0.64). The
-  // tenant-account case never resolves (its phishing-desk
-  // complaint and send path own the section), and neither
-  // does an ordinary sender. Returns "azure" | "google" |
-  // "aws" | "ovh" | null.
+  // Which form-only case a traced message is, if any — the
+  // same resolution as the stepped kits (formKitKeyFor).
+  // When this resolves, the complaint section renders the
+  // kit ONLY — no emailed-complaint box, no Open-in-Outlook
+  // send button (Michael's call, 2026-11-02, after
+  // live-testing the Azure kit with both lanes showing: an
+  // emailed complaint to a form host goes nowhere —
+  // extended the same evening to all four form hosts,
+  // matching the Gmail panel, which has built no email for
+  // form hosts since its v1.0.64). The tenant-account case
+  // never resolves (its phishing-desk complaint and send
+  // path own the section), and neither does an ordinary
+  // sender. Returns "azure" | "google" | "aws" | "ovh" |
+  // null.
   function formOnlyFor(a, c) {
-    if (!a || a.msAccountReport) return null;
-    if (a.hyperscaler === "azure") return "azure";
     return formKitKeyFor(a, c);
   }
 
@@ -784,8 +835,7 @@
       // here to send, only the host's form to walk.
       var formOnlyKey = formOnlyFor(a, c);
       var formOnly = !!formOnlyKey;
-      var azureKit = formOnlyKey === "azure";
-      var stepKitKey = (formOnly && !azureKit) ? formOnlyKey : null;
+      var stepKitKey = formOnly ? formOnlyKey : null;
       var compSec = accSection("sf-sec-complaint", "sf-btn-green",
         formOnly ? "Abuse report — use their form"
           : "Abuse complaint — ready to send");
@@ -824,72 +874,20 @@
       // tested 2026-10-15). The per-field OVH form kit below
       // subsumes it — it carries the same form link, plus the
       // steps the note never had.
-      // Azure form kit (v1.2.3, Michael's live-test call
-      // 2026-11-02): when the trace lands on a computer rented
-      // on Microsoft Azure (the engine's hyperscaler flag, the
-      // same resolution the Gmail panel uses for its form
-      // hints), the MSRC form lane IS this section — at
-      // Michael's call after live-testing both lanes side by
-      // side, an Azure case renders the kit only: no emailed
-      // complaint box above, no send button below (the email
-      // would go nowhere; the form is where a case gets
-      // opened). Still NOT a new section (the pane stays at
-      // six). The form link is printed in full so it can be
-      // copied by hand too. The tenant-account case is
-      // excluded outright: its report goes to the phishing
-      // desk about the account, never to the Azure form (a
-      // pool IP's RDAP can read as a Microsoft block, but a
-      // mailbox tenant is not a rented Azure VM — the Gmail
-      // panel's v1.0.67 guard, mirrored).
-      if (azureKit) {
-        cw.appendChild(h("p", { "class": "sf-note" },
-          "This spam came from a computer rented on Microsoft " +
-          "Azure. Microsoft takes abuse reports for Azure " +
-          "through its web form \u2014 the form is where a case " +
-          "gets opened:"));
-        var azLinkP = h("p", { "class": "sf-formlink" });
-        azLinkP.appendChild(h("a", {
-          href: AZURE_FORM_URL, target: "_blank", rel: "noopener"
-        }, AZURE_FORM_URL));
-        cw.appendChild(azLinkP);
-        var azTa = h("textarea", { id: "sf-azure-form-text" });
-        azTa.readOnly = true;
-        azTa.value = azureFormDetailsText(a);
-        cw.appendChild(h("div", { "class": "sf-casebox" },
-          h("b", null,
-            "Details for the form \u2014 paste into the form's " +
-            "details field:"),
-          azTa));
-        var azStatus = secStatus("sf-azure-status");
-        var azCopyBtn = h("button", { id: "sf-azure-copy",
-          "class": "sf-btn-green", "type": "button" },
-          "Copy the details for the form");
-        azCopyBtn.addEventListener("click", function () {
-          copyText(azTa.value, azStatus, {
-            selectEl: azTa,
-            successText: "\u2713 Copied \u2014 open the Microsoft " +
-              "form with the link above, click its details " +
-              "field and press Ctrl+V (" + TAG + ").",
-            manualText: "\u26a0 Copy didn't take \u2014 the details " +
-              "in the box above are selected: press Ctrl+C, " +
-              "then paste them into the form's details field " +
-              "with Ctrl+V (" + TAG + ")."
-          });
-        });
-        cw.appendChild(h("div", { "class": "sf-actions" }, azCopyBtn));
-        cw.appendChild(azStatus);
-      }
-      // Per-field form kits for Google Cloud / AWS /
-      // OVHcloud (v1.2.3, Gmail v1.0.69 parity): those forms
-      // split a report across their own boxes, so the kit
-      // walks the form field by field INSIDE this section —
+      // Per-field form kits for all four form hosts —
+      // Google Cloud / AWS / OVHcloud (v1.2.3, Gmail v1.0.69
+      // parity) and Microsoft Azure (which joined them at
+      // the Gmail v1.0.70 parity rework, after Michael filed
+      // its MSRC form by hand): those forms split a report
+      // across their own boxes, so the kit walks the form
+      // field by field INSIDE this section —
       // each step names the form's box, says the one thing
       // to do with it, and shows that field's evidence slice
       // with its own Copy button (the pane's shared copyText,
-      // like the FTC lane's). Like the Azure case above, a
-      // kit case renders the kit only — no emailed-complaint
-      // box, no send button (Michael's call, extended to all
-      // four form hosts) — and NOT a new section (the pane
+      // like the FTC lane's). A kit case renders the kit
+      // only — no emailed-complaint box, no send button
+      // (Michael's call, extended to all four form hosts)
+      // — and NOT a new section (the pane
       // stays at six). Resolution mirrors the Gmail panel's:
       // the tenant-account case never gets a kit, a
       // hyperscaler flag beats the OVH match. Steps whose
@@ -1487,7 +1485,6 @@
     module.exports = {
       copyText: copyText,
       caseDetailsText: caseDetailsText,
-      azureFormDetailsText: azureFormDetailsText,
       AZURE_FORM_URL: AZURE_FORM_URL,
       FORM_FIELD_KITS: FORM_FIELD_KITS,
       formKitKeyFor: formKitKeyFor,

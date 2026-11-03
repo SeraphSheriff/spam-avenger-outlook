@@ -26,12 +26,17 @@ stays focused on what you're doing.
   section instead becomes **Abuse report — use their form**:
   form kit only, no emailed complaint and no send button,
   because those desks act on their web forms and an emailed
-  complaint goes nowhere. Microsoft Azure gets Microsoft's
-  abuse-form link (prefilled for an IP-address spam report)
-  plus a copy-ready details block, since Microsoft opens
-  Azure abuse cases from its web form. Google Cloud, Amazon
-  AWS, and OVHcloud each get a per-field form kit for that
-  host: the form link, then a walk through the form's boxes
+  complaint goes nowhere. Microsoft Azure gets a per-field
+  form kit for Microsoft's MSRC abuse form (the link lands
+  prefilled for an IP-address spam report), walking the
+  form's boxes in the form's order: the full report block
+  for the Additional information box (which caps at 15,000
+  characters), the Source IP box, the Incident date and
+  time pickers carrying the message's moment in UTC, and a
+  short slice for the Report notes box, sized to that
+  box's 2,000-character cap. Google Cloud, Amazon AWS, and
+  OVHcloud each get a per-field form kit for that host: the
+  form link, then a walk through the form's boxes
   one at a time, each pasteable field with its own Copy
   button carrying exactly the evidence slice that box asks
   for (the forms' name/email boxes are yours; the kits never

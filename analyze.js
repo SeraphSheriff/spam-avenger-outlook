@@ -880,10 +880,12 @@
   // two labeled facts the emailed complaint carries that the
   // standard block omits — the server name and the defanged
   // links (same slice cap of 10, same defangUrl) — so the block
-  // pasted into the MSRC form's details field mirrors the
-  // complaint's evidence. The headers treatment is unchanged
-  // (trimHeaders, same 8000 cap). Default off: the other form
-  // kits' blocks stay byte-identical to before.
+  // mirrors the complaint's evidence. The headers treatment is
+  // unchanged (trimHeaders, same 8000 cap). Default off: the
+  // other form kits' blocks stay byte-identical to before.
+  // v1.0.70: the block's paste target is the MSRC form's
+  // Additional information box (15,000-character cap), reached
+  // as the azure kit's "additionalInfo" field slice.
   function buildFormEvidence(a, opts) {
     opts = opts || {};
     var headerCap = opts.headerCap != null ? opts.headerCap : 8000;
@@ -926,20 +928,28 @@
   }
 
   // Per-field form evidence (v1.0.69, combined build): the
-  // Google Cloud / AWS / OVHcloud abuse forms do NOT share the
-  // MSRC form's shape — each splits the report across its own
-  // boxes (verified against the live forms and the providers'
-  // own reporting docs, 2026-11-02). One paste block fits none
+  // Google Cloud / AWS / OVHcloud abuse forms do NOT share one
+  // shape — each splits the report across its own boxes
+  // (verified against the live forms and the providers' own
+  // reporting docs, 2026-11-02). One paste block fits none
   // of them: Google caps its "Abuse details" box at 1,000
   // characters and takes the headers as an uploaded log file
   // instead; AWS asks for the incident as log-style lines
   // (source IP, ISO date/time, time zone) plus log extracts;
   // OVHcloud asks for a location (IP or URL), a description it
   // forwards to the service owner, and logs/technical elements
-  // separately. So the panel's form kits declare their form's
-  // fields (content.js HYPER_FORM_HINTS `fields`) and each
-  // field's Copy button carries the slice built here, keyed by
-  // the field's `copy` name:
+  // separately. v1.0.70: the MSRC form joins them — Michael
+  // filed it by hand and screenshotted both of its steps
+  // (2026-11-02): a Contact Information step whose Additional
+  // information box caps at 15,000 characters (the v1.0.69
+  // mirror-complaint block fits it, and stays as that box's
+  // paste), then a Report Details step with Incident date /
+  // time / Time zone pickers, a Source IP box of its own, and
+  // a Report notes box capped at 2,000 characters. So the
+  // panel's form kits declare their
+  // form's fields (content.js HYPER_FORM_HINTS `fields`) and
+  // each field's Copy button carries the slice built here,
+  // keyed by the field's `copy` name:
   //   "ip"            the bare source IP (a location/IP box)
   //   "date"          the message day, ISO YYYY-MM-DD (a date box)
   //   "urls"          the message's URLs, one per line, RAW —
@@ -963,12 +973,37 @@
   //                   carries them) and no reporter identity —
   //                   OVHcloud transfers the description to the
   //                   service owner, so it is facts only
+  //   "incidentStamp" (v1.0.70) the message's received moment
+  //                   presented for the MSRC form's Incident
+  //                   date / time / Time zone pickers: the day
+  //                   and the HH:MM in UTC, plus the compact
+  //                   full stamp; null when the date won't
+  //                   parse (the panel skips the step)
+  //   "additionalInfo" (v1.0.70) the MSRC form's Additional
+  //                   information box (Contact Information
+  //                   step, 15,000-character cap): the full
+  //                   details block — buildFormEvidence with
+  //                   opts.mirrorComplaint, the v1.0.69 block,
+  //                   kept and retargeted at the box it
+  //                   actually fits (Michael pasted it there
+  //                   by hand: ~9,200 of 15,000 used)
+  //   "msrcNotes"     (v1.0.70) the MSRC form's Report notes
+  //                   text (Report Details step), built to a
+  //                   HARD 2,000-character cap (the box's own
+  //                   limit): the narrative (an Azure-rented
+  //                   computer, the account/customer ask),
+  //                   From, Subject, source IP, server, date,
+  //                   the defanged links (cap 10), and the
+  //                   ingress Received line. NO full headers
+  //                   — they live in the Additional
+  //                   information paste. No reporter identity.
   // Returns the slice text, or null when the slice cannot be
   // built (no traced IP, no URLs for "urls", no headers or
-  // Received line for "logs", an unparseable date for "date") —
-  // the panel skips a step whose slice is null. Reporter-
-  // identity fields are never built here at all: name/email
-  // boxes on these forms are the user's own to fill in.
+  // Received line for "logs", an unparseable date for "date"
+  // or "incidentStamp") — the panel skips a step whose slice
+  // is null. Reporter-identity fields are never built here at
+  // all: name/email boxes on these forms are the user's own
+  // to fill in.
   function isoDayStamp(s) {
     var d = new Date(String(s || "").trim());
     if (isNaN(d.getTime())) return null;
@@ -1080,6 +1115,67 @@
         dout = dout.slice(0, 4000 - 40) + "\n[description truncated]";
       }
       return dout;
+    }
+    if (key === "incidentStamp") {
+      var isd = new Date(String(a.date || "").trim());
+      if (isNaN(isd.getTime())) return null;
+      var iIso = isd.toISOString();
+      return "Date: " + iIso.slice(0, 10) + " \u00B7 Time: " +
+        iIso.slice(11, 16) + " UTC\n" +
+        "Full stamp (UTC): " +
+        iIso.slice(0, 19).replace("T", " ") + " UTC \u2014 in " +
+        "the form\u2019s Time zone box, pick UTC/GMT if offered.";
+    }
+    if (key === "additionalInfo") {
+      // The full details block (the v1.0.69 mirror block),
+      // retargeted: the MSRC form's Additional information
+      // box caps at 15,000 characters and the block fits it
+      // (its headers are already capped at 8,000 by
+      // buildFormEvidence). Null propagates: no traced IP,
+      // no block, step skipped.
+      return buildFormEvidence(a, { mirrorComplaint: true });
+    }
+    if (key === "msrcNotes") {
+      // HARD cap: the MSRC Report notes box stops at 2,000
+      // characters (live counter on the form, 2026-11-02).
+      // The SHORT slice: narrative + facts + defanged links
+      // + the ingress Received line. NO full headers — they
+      // live in the Additional information paste above. If a
+      // pathological From/Subject/links set still overflows,
+      // link lines drop from the end before anything else
+      // gives; the final slice is the belt-and-braces guard.
+      var NOTE_CAP = 2000;
+      var mn = [];
+      mn.push("Spam/phishing email sent from a computer rented " +
+        "on Microsoft Azure. It was sent from IP address " +
+        a.ip + (a.org ? " (registered to " + a.org + ")" : "") +
+        " and received on " + utcStamp(a.date) + ". " +
+        "Please investigate the account or customer " +
+        "responsible and take appropriate action. Full " +
+        "headers are in the Additional information field of " +
+        "this report.");
+      mn.push("");
+      mn.push("From: " + (a.from || "unknown"));
+      mn.push("Subject: " + (a.subject || "unknown"));
+      mn.push("Source IP: " + a.ip);
+      mn.push("Server: " + displayHost(a.host));
+      mn.push("Date/time (UTC): " + utcStamp(a.date));
+      if (a.ingressReceived) mn.push("Received: " + a.ingressReceived);
+      if (a.urls && a.urls.length) {
+        mn.push("Links in message (defanged \u2014 read hxxps " +
+          "as https and [.] as .):");
+        var mLinks = a.urls.slice(0, 10).map(function (u) {
+          return "  - " + defangUrl(u);
+        });
+        while (mLinks.length &&
+          mn.join("\n").length + 1 +
+            mLinks.join("\n").length > NOTE_CAP) {
+          mLinks.pop();
+        }
+        mLinks.forEach(function (l) { mn.push(l); });
+      }
+      var mout = mn.join("\n");
+      return mout.length > NOTE_CAP ? mout.slice(0, NOTE_CAP) : mout;
     }
     return null;
   }
