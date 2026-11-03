@@ -205,6 +205,52 @@
       });
   }
 
+  // v1.0.68: Michael's "no website" tell. A throwaway sending
+  // domain often runs NO website at all — no A or AAAA records
+  // for the apex or its www host — because it exists only to
+  // send mail. Checked over the same dns.google permission the
+  // reverse-DNS lookup above already uses; no new permissions.
+  // Resolves true ONLY on a confirmed-empty result (every query
+  // answered, none carrying any Answer record). Resolves false
+  // when any record exists, and null on ANY error or uncertainty
+  // (a failed or timed-out query, a SERVFAIL, a malformed
+  // reply) — callers assert the tell only on === true and stay
+  // silent otherwise. Results are cached per domain.
+  var noWebsiteCache = {};
+  function dnsAnswerList(name, type) {
+    return fetchJson("https://dns.google/resolve?name=" +
+      encodeURIComponent(name) + "&type=" + type, 3000)
+      .then(function (d) {
+        if (!d || typeof d.Status !== "number") return null;
+        if (d.Status === 3) return []; // NXDOMAIN: the name is not there
+        if (d.Status !== 0) return null; // SERVFAIL etc: no conclusion
+        return Array.isArray(d.Answer) ? d.Answer : [];
+      })
+      .catch(function () { return null; });
+  }
+  function domainNoWebsite(domain) {
+    domain = String(domain || "").toLowerCase().replace(/\.$/, "");
+    if (!domain || domain.indexOf(".") === -1) {
+      return Promise.resolve(null);
+    }
+    if (noWebsiteCache[domain]) return noWebsiteCache[domain];
+    var jobs = [];
+    [domain, "www." + domain].forEach(function (name) {
+      ["A", "AAAA"].forEach(function (type) {
+        jobs.push(dnsAnswerList(name, type));
+      });
+    });
+    var p = Promise.all(jobs).then(function (rs) {
+      for (var i = 0; i < rs.length; i++) {
+        if (rs[i] === null) return null; // one unknown poisons the verdict
+        if (rs[i].length) return false; // a record exists: it has web DNS
+      }
+      return true; // every name answered, all empty: no website
+    }).catch(function () { return null; });
+    noWebsiteCache[domain] = p;
+    return p;
+  }
+
   function whitelisted(host) {
     host = String(host || "").toLowerCase();
     return PROVIDER_WHITELIST.some(function (w) {
@@ -241,6 +287,328 @@
     return null;
   }
 
+  // --- v1.0.67: Microsoft tenant-account detection (integrated
+  // into the Report Abuse lane, Michael's correction Nov 2 2026:
+  // NOT a separate lane) ---
+  // When a phish is sent by a REAL Microsoft 365 tenant account,
+  // the traced IP is a Microsoft outbound-protection pool address
+  // shared by thousands of tenants. A host complaint to
+  // abuse@microsoft.com reports Microsoft to Microsoft for running
+  // Outlook and dies in that queue. The account itself is the
+  // offender, and Microsoft's phishing desk
+  // (phish@office365.microsoft.com) is the desk that can act on
+  // the account. Detection requires BOTH: (1) the sending server
+  // is the Outlook protection pool, and (2) SPF, DKIM and DMARC
+  // all pass for the From domain — a real account, not a spoof.
+  // When it fires, the EXISTING Report Abuse lane switches its
+  // recipient and body (see buildComplaint's dispatch below);
+  // there is no separate lane, section, or button.
+
+  // Parse SPF/DKIM/DMARC verdicts out of Authentication-Results
+  // and ARC-Authentication-Results. A mechanism is "pass" when
+  // ANY auth block reports pass for it: the live first case
+  // (Jessica Huber, Nov 2 2026) carries ARC results of
+  // spf=pass / dkim=pass / dmarc=pass alongside a later
+  // Authentication-Results block reading dkim=none / dmarc=none,
+  // so requiring every block to agree would miss the real
+  // account. Any other verdict is the first one seen.
+  function parseAuthResults(headers) {
+    var out = { spf: null, dkim: null, dmarc: null };
+    if (!headers) return out;
+    var blocks = getAll(headers, "authentication-results")
+      .concat(getAll(headers, "arc-authentication-results"));
+    var text = blocks.join("; ").toLowerCase();
+    ["spf", "dkim", "dmarc"].forEach(function (mech) {
+      var re = new RegExp(mech + "\\s*=\\s*([a-z]+)", "g");
+      var m, first = null;
+      while ((m = re.exec(text))) {
+        if (first === null) first = m[1];
+        if (m[1] === "pass") { out[mech] = "pass"; return; }
+      }
+      out[mech] = first;
+    });
+    return out;
+  }
+
+  function authAllPass(auth) {
+    return !!(auth && auth.spf === "pass" &&
+      auth.dkim === "pass" && auth.dmarc === "pass");
+  }
+
+  // True for the Outlook protection pool only:
+  // protection.outlook.com itself or any subdomain of it
+  // (mail-*.outbound.protection.outlook.com in the wild).
+  // A bare outlook.com / prod.outlook.com internal hop is NOT
+  // the outbound pool and does not fire this.
+  function isMicrosoftProtectionHost(host) {
+    var hst = String(host || "").trim().toLowerCase()
+      .replace(/\.$/, "");
+    if (!hst) return false;
+    return hst === "protection.outlook.com" ||
+      hst.endsWith(".protection.outlook.com");
+  }
+
+  // Hostnames named in Received headers, in header order.
+  function receivedHosts(headers) {
+    var out = [];
+    getAll(headers, "received").forEach(function (v) {
+      var m = String(v).match(/^\s*from\s+([A-Za-z0-9._-]+)/i);
+      if (m && out.indexOf(m[1].toLowerCase()) === -1) {
+        out.push(m[1].toLowerCase());
+      }
+    });
+    return out;
+  }
+
+  // The sending server named in the Received hop that carried
+  // the traced IP (falling back to the oldest Received hop).
+  function sendingServerFor(headers, ip) {
+    var recvd = getAll(headers, "received");
+    function hostOf(v) {
+      var m = String(v).match(/^\s*from\s+([A-Za-z0-9._-]+)/i);
+      return m ? m[1] : null;
+    }
+    if (ip) {
+      for (var i = recvd.length - 1; i >= 0; i--) {
+        if (recvd[i].indexOf(ip) !== -1) return hostOf(recvd[i]);
+      }
+    }
+    return recvd.length ? hostOf(recvd[recvd.length - 1]) : null;
+  }
+
+  function senderEmail(from) {
+    var m = String(from || "").match(/([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/);
+    return m ? m[1] : "";
+  }
+
+  // Where Microsoft tenant-account reports go (the phishing
+  // desk). junk@office365.microsoft.com is the mere-spam sibling;
+  // this addon reports phishing accounts, so the phish desk it is.
+  var MS_PHISH_DESK = "phish@office365.microsoft.com";
+
+  // The account report that REPLACES the host complaint inside
+  // the Report Abuse lane for a real Microsoft tenant account.
+  // Same {to, subject, body} shape as buildComplaint, same
+  // header/body caps, same trimHeaders treatment. NOTE on
+  // attachments: Microsoft's filters 550-block raw .eml
+  // attachments (proven in the manual Nov 2 2026 send, which
+  // had to ZIP the original), and the Gmail compose lane this
+  // addon drives cannot attach a ZIP either — so the full
+  // headers ride IN THE BODY, exactly as the normal complaint
+  // already carries them. No .eml attachment is designed in.
+  function buildMsAccountReport(a, opts) {
+    opts = opts || {};
+    var headerCap = opts.headerCap != null ? opts.headerCap : 8000;
+    var bodyCap = opts.bodyCap != null ? opts.bodyCap : 4000;
+    if (!a) return null;
+    var account = senderEmail(a.from) || a.from || "unknown";
+    var domain = (String(account).match(/@([\w.-]+)/) || [])[1] ||
+      a.senderDomain || "unknown";
+    var server = a.host || a.sendingServer || "unknown";
+    var auth = a.authResults || {};
+    function av(k) { return auth[k] ? String(auth[k]) : "unknown"; }
+    var L = [];
+    L.push("Hello Microsoft Phishing Team,");
+    L.push("");
+    L.push("I received a phishing / spam message sent by a real " +
+      "Microsoft 365 account. I am reporting the account itself.");
+    L.push("");
+    L.push("  Sender account: " + account);
+    L.push("  Subject:        " + (a.subject || "unknown"));
+    L.push("  Date received:  " + (a.date || "unknown"));
+    L.push("  Sending server: " + displayHost(server));
+    L.push("  Source IP:      " + (a.ip || "unknown") +
+      " (Microsoft's shared outbound protection pool — not the " +
+      "sender's own server)");
+    L.push("  Authentication: SPF " + av("spf") + ", DKIM " +
+      av("dkim") + ", DMARC " + av("dmarc") +
+      " for " + domain + " — this is a live tenant account, " +
+      "not a spoofed address.");
+    // v1.0.68: the no-website tell, as one body line — only
+    // when investigate confirmed it (senderDomainNoWebsite is
+    // set solely on a confirmed-empty DNS result).
+    if (a.senderDomainNoWebsite) {
+      L.push("  Website:        " + domain + " has no website " +
+        "(no A or AAAA records for the domain or www." + domain +
+        "). It exists only to send mail.");
+    }
+    if (a.urls && a.urls.length) {
+      L.push("  Links in message (defanged so spam filters don't eat this report — read hxxps as https and [.] as .):");
+      a.urls.slice(0, 10).forEach(function (u) { L.push("    - " + defangUrl(u)); });
+    }
+    L.push("");
+    L.push("The account itself is the offender. The sending IP is " +
+      "Microsoft's shared outbound pool, used by thousands of " +
+      "unrelated tenants, so action against the IP or a host " +
+      "complaint to the IP's abuse contact cannot stop this " +
+      "sender. Please investigate this account and take " +
+      "appropriate action on the account.");
+    L.push("");
+    if (a.fullHeaders) {
+      var th = trimHeaders(String(a.fullHeaders));
+      var fh = th.text;
+      var truncated = fh.length > headerCap;
+      if (truncated) fh = fh.slice(0, headerCap);
+      L.push("Full headers (plain text, as received):");
+      fh.split("\n").forEach(function (ln) { L.push("  " + ln); });
+      if (th.stripped) L.push("  [ARC/DKIM signature blocks omitted — routing and authentication headers are complete]");
+      if (truncated) L.push("  [headers truncated at " + headerCap + " characters]");
+      L.push("");
+    } else {
+      L.push("Key headers as evidence:");
+      L.push("  Message-ID: " + (a.messageId || "unknown"));
+      if (a.ingressReceived) L.push("  " + a.ingressReceived);
+      L.push("");
+    }
+    if (a.bodyText && bodyCap > 0) {
+      var bt = defangText(String(a.bodyText).slice(0, bodyCap));
+      L.push("Message body (plain text, links defanged so spam filters don't eat this report — read hxxps as https and [.] as .):");
+      bt.split("\n").forEach(function (ln) { L.push("  " + ln); });
+      L.push("");
+    }
+    L.push("Thank you.");
+    return {
+      to: MS_PHISH_DESK,
+      subject: "Phishing account report: " + account,
+      body: L.join("\n")
+    };
+  }
+
+  // v1.0.68: the details-panel note for the Microsoft
+  // tenant-account case. The generic panel line ('The "From"
+  // address is makeup. The IP is the face underneath.') is
+  // BACKWARDS here: the From account is real and is itself the
+  // offender, and the IP is just Microsoft's shared outbound
+  // pool. Michael's live test of v1.0.67 caught the old line
+  // sitting on the Huber message; this is the flipped line,
+  // naming the account. It gains the no-website sentence only
+  // when investigate confirmed it (a.senderDomainNoWebsite —
+  // set solely on a confirmed-empty DNS result, never on an
+  // error). Returns null when the case doesn't fire.
+  function msDetailsNote(a) {
+    if (!a || !(a.msAccountReport || isMsAccountCase(a))) return null;
+    var account = senderEmail(a.from) || a.from || "The sender account";
+    var note = "No makeup this time: " + account + " is the face. " +
+      "The IP is just Microsoft's shared mail truck.";
+    if (a.senderDomainNoWebsite) {
+      var domain = (String(account).match(/@([\w.-]+)/) || [])[1] ||
+        a.senderDomain || "";
+      if (domain) {
+        note += " " + domain + " doesn't even run a website. " +
+          "It exists only to send mail.";
+      }
+    }
+    return note;
+  }
+
+  // True when the analysis (headers + optionally the PTR host /
+  // RDAP org gathered by investigate) is the Microsoft
+  // tenant-account case: protection-pool sending server AND
+  // SPF/DKIM/DMARC all passing.
+  function isMsAccountCase(a) {
+    if (!a || !authAllPass(a.authResults)) return false;
+    if (a.msProtectionHost) return true;
+    if (isMicrosoftProtectionHost(a.host)) return true;
+    if (isMicrosoftProtectionHost(a.sendingServer)) return true;
+    var hosts = a.receivedHosts || [];
+    for (var i = 0; i < hosts.length; i++) {
+      if (isMicrosoftProtectionHost(hosts[i])) return true;
+    }
+    return false;
+  }
+
+  // The abuse POC's identity (fn / email / handle) of the first
+  // abuse-role entity in the record, nested or top-level — the
+  // same traversal as extractAbuse. The POC is where an emailed
+  // complaint actually lands, so when a provider parks one
+  // dedicated cloud-abuse desk on a block, that identity says
+  // "cloud" even when the net name and org don't (see below).
+  function abusePoc(obj) {
+    if (!obj || !obj.entities) return null;
+    for (var i = 0; i < obj.entities.length; i++) {
+      var ent = obj.entities[i];
+      var roles = (ent.roles || []).map(function (r) {
+        return String(r).toLowerCase();
+      });
+      if (roles.indexOf("abuse") !== -1) {
+        return {
+          fn: String(vcardFn(ent.vcardArray) || ""),
+          email: String(vcardEmail(ent.vcardArray) || ""),
+          handle: String(ent.handle || "")
+        };
+      }
+      var nested = abusePoc(ent);
+      if (nested) return nested;
+    }
+    return null;
+  }
+
+  // Hyperscaler CLOUD blocks: spam sent from a rented cloud VM
+  // traces to the provider's giant network block (GOOGLE-CLOUD,
+  // an Amazon allocation, MSFT ...). The RDAP abuse contact
+  // exists, but those compliance desks are deflection-grade —
+  // the providers' abuse FORMS are the lane that acts (the
+  // OVHcloud lesson, one size up). Detection reads only the RDAP
+  // identity already fetched (network name, registrant org, and
+  // the abuse POC's identity) and demands a cloud-provider
+  // identity, so big MAILBOX providers never trip it:
+  // Gmail/Outlook sending is the skipComplaint path and stays
+  // untouched.
+  // Returns "google" | "aws" | "azure" | null.
+  function hyperscalerOf(rdap) {
+    if (!rdap) return null;
+    var net = String(rdap.name || "").toUpperCase();
+    var org = "";
+    var ents = rdap.entities || [];
+    for (var i = 0; i < ents.length; i++) {
+      var roles = (ents[i].roles || []).map(function (r) {
+        return String(r).toLowerCase();
+      });
+      if (roles.indexOf("registrant") !== -1) {
+        org = String(vcardFn(ents[i].vcardArray) || "").toUpperCase();
+        if (org) break;
+      }
+    }
+    var poc = abusePoc(rdap) || { fn: "", email: "", handle: "" };
+    var pocFn = poc.fn.toUpperCase();
+    var pocEmail = poc.email.toLowerCase();
+    var pocHandle = poc.handle.toUpperCase();
+    // Google Cloud — net names like GOOGLE-CLOUD, a Google
+    // Cloud org, OR the GC Abuse POC. The POC signal is load-
+    // bearing: some Cloud allocations wear neither marker —
+    // GOOGL-2 (NET-34-128-0-0-1) is plain "Google LLC" space by
+    // name/org, but its abuse desk is the same GCABU-ARIN
+    // "GC Abuse" <google-cloud-compliance@google.com> as
+    // GOOGLE-CLOUD's, so the complaint lands on Cloud
+    // Compliance either way. Plain GOOGLE / GOGL blocks do NOT
+    // carry that POC (verified 2026-10-28 on 142.250.80.1 and
+    // 8.8.8.8: ABUSE5250-ARIN "Abuse" <network-abuse@google
+    // .com>), so generic Google addresses never fire this.
+    if ((net.indexOf("GOOGLE") !== -1 && net.indexOf("CLOUD") !== -1) ||
+        org.indexOf("GOOGLE CLOUD") !== -1 ||
+        pocEmail === "google-cloud-compliance@google.com" ||
+        pocHandle === "GCABU-ARIN" ||
+        pocFn.indexOf("GC ABUSE") !== -1) return "google";
+    // Amazon AWS — AMAZON / AMAZON-EC2-* net names, or an Amazon
+    // registrant org (some AWS allocations carry handle-style
+    // net names — the 52.0.0.0/10 block is "AT-88-Z" — so the
+    // registrant org is the reliable marker there), OR the
+    // AEA8-ARIN "Amazon EC2 Abuse" POC, which rides every AWS
+    // allocation checked (AT-88-Z, AMAZON-S3; 2026-10-28).
+    if (net.indexOf("AMAZON") !== -1 || /(^|[-_])AWS([-_]|$)/.test(net) ||
+        org.indexOf("AMAZON") !== -1 ||
+        pocFn.indexOf("AMAZON EC2") !== -1) return "aws";
+    // Microsoft Azure — AZURE net names, or MICROSOFT / MSFT
+    // net names registered to Microsoft Corporation. Deliber-
+    // ately NOT keyed on the abuse POC: MAC74-ARIN "Microsoft
+    // Abuse Contact" <abuse@microsoft.com> is Microsoft's
+    // general abuse desk (mail included), not cloud-distinct.
+    if (net.indexOf("AZURE") !== -1 ||
+        (/(^|[-_])(MICROSOFT|MSFT)([-_]|$)/.test(net) &&
+         org.indexOf("MICROSOFT") !== -1)) return "azure";
+    return null;
+  }
+
   function stripTags(html) {
     return String(html)
       .replace(/<img\b[^>]*\balt="([^"]*)"[^>]*>/gi, " $1 ")
@@ -250,15 +618,68 @@
       .replace(/&#39;/g, "'");
   }
 
+  // v1.0.65 test2 (Michael's live catch, 2026-10-30): phish kits
+  // ship hrefs with multiplied slashes — the Safe Browsing lane
+  // was handed "https://////w2.xiongmao-outdoor.com////////
+  // g4herty////////s234r3wa1.html" verbatim and the mangled
+  // string landed in the report form's URL field. A user cannot
+  // be expected to clean slashes by hand, so collection
+  // normalizes every URL: in the part before any ? or #, each
+  // run of 2+ slashes collapses to one and the scheme separator
+  // comes out as exactly "://". Query and fragment pass through
+  // byte-for-byte (a "//" inside a query value can be data, not
+  // sloppiness), an already-clean URL is unchanged, and a string
+  // with no http(s) scheme is returned as-is. Runs here, inside
+  // extractUrls(), so every downstream lane — Safe Browsing and
+  // FTC stash/prefill, the URL picker, complaint text, form-kit
+  // evidence — gets the clean form, and defangUrl() parses it
+  // again (it silently no-ops on a slash-mangled URL).
+  function normalizeUrl(u) {
+    var s = String(u);
+    var m = s.match(/^(https?:)\/+([\s\S]*)$/i);
+    if (!m) return s;
+    var rest = m[2];
+    var cut = rest.length;
+    var qi = rest.indexOf("?"), fi = rest.indexOf("#");
+    if (qi !== -1 && qi < cut) cut = qi;
+    if (fi !== -1 && fi < cut) cut = fi;
+    return m[1] + "//" +
+      rest.slice(0, cut).replace(/\/{2,}/g, "/") + rest.slice(cut);
+  }
+
   function extractUrls(text) {
     var urls = [];
     var m;
     URL_RE.lastIndex = 0;
     while ((m = URL_RE.exec(text))) {
       var u = m[0].replace(/[.,;!)\]}"'=]+$/, "");
+      u = normalizeUrl(u);
       if (u && urls.indexOf(u) === -1 && urls.length < 20) urls.push(u);
     }
     return urls;
+  }
+
+  // v1.0.64 (Michael's live-test catch, 2026-10-28): an asset URL —
+  // one whose path ends in an image/media/font/style extension —
+  // is set dressing (a hotlinked logo, a tracking pixel), never the
+  // phishing landing page. Both report lanes lead with urls[0]
+  // (the FTC "Phishing URL:" line, the Safe Browsing URL field),
+  // and on the Medicare Kit lure that slot went to a Wikimedia
+  // logo (.svg.png) while the real phish page sat third.
+  function isAssetUrl(u) {
+    var p = String(u).split(/[?#]/)[0].toLowerCase();
+    return /\.(png|jpe?g|gif|svg|webp|bmp|ico|tiff?|avif|mp4|mp3|woff2?|ttf|css)$/.test(p);
+  }
+
+  // Stable partition: page candidates first (original order),
+  // asset URLs after (original order). Nothing is dropped — the
+  // complaint body still quotes every link as evidence — only the
+  // ORDER changes, so urls[0] is a page whenever the message has
+  // one. If every link is an asset, the order is untouched.
+  function leadWithPages(urls) {
+    var pages = [], assets = [];
+    urls.forEach(function (u) { (isAssetUrl(u) ? assets : pages).push(u); });
+    return pages.concat(assets);
   }
 
   function redFlags(fromAddr, urls, text) {
@@ -368,6 +789,17 @@
     opts = opts || {};
     var headerCap = opts.headerCap != null ? opts.headerCap : 8000;
     var bodyCap = opts.bodyCap != null ? opts.bodyCap : 4000;
+    // v1.0.67: the Microsoft tenant-account case switches THIS
+    // lane's target and body — same Report Abuse lane, same
+    // review-first compose flow, no separate lane. It fires
+    // before the skipComplaint / abuse-contact guards because
+    // the whole point is that there is no usable host complaint
+    // for a shared-pool IP: the report goes to Microsoft's
+    // phishing desk about the account instead. A traced IP is
+    // still required — no origin, no account report.
+    if (a && a.ip && (a.msAccountReport || isMsAccountCase(a))) {
+      return buildMsAccountReport(a, opts);
+    }
     if (a.skipComplaint || !a.ip || !a.abuse) return null;
     var L = [];
     L.push("Hello Abuse Team,");
@@ -418,6 +850,65 @@
       subject: "Network abuse complaint — spam from " + a.ip,
       body: L.join("\n")
     };
+  }
+
+  // Render a header date as a UTC stamp for the form-evidence
+  // block ("Wed, 28 Oct 2026 09:27:25 UTC"). Unparseable input
+  // passes through raw — a form reviewer can still read it.
+  function utcStamp(s) {
+    var raw = String(s || "").trim();
+    if (!raw) return "unknown";
+    var d = new Date(raw);
+    if (!isNaN(d.getTime())) return d.toUTCString().replace("GMT", "UTC");
+    return raw;
+  }
+
+  // Form-kit evidence (v1.0.64): some hosts act ONLY on reports
+  // filed through their own abuse form — the hyperscaler clouds
+  // (a.hyperscaler) and OVHcloud. An emailed complaint to those
+  // desks is deflected to the form anyway, so for those panels
+  // buildComplaint's email is never shown; instead the user
+  // gets ONE paste-ready evidence block for the form's
+  // details/description field: a summary paragraph, the labeled
+  // facts the forms ask for, and the full headers with the same
+  // trimHeaders treatment the emailed complaint gets (signature
+  // blocks stripped, capped), so the paste stays shippable.
+  // Returns the block text, or null when there is no traced IP
+  // to report.
+  function buildFormEvidence(a, opts) {
+    opts = opts || {};
+    var headerCap = opts.headerCap != null ? opts.headerCap : 8000;
+    if (!a || !a.ip) return null;
+    var L = [];
+    L.push("I received a spam/phishing message originating from " +
+      "your network. It was sent from IP address " + a.ip +
+      (a.org ? " (registered to " + a.org + ")" : "") +
+      " and received on " + utcStamp(a.date) + ". " +
+      "Please investigate the account or customer responsible " +
+      "and take appropriate action. The message details and " +
+      "full headers follow as evidence.");
+    L.push("");
+    L.push("Source IP: " + a.ip);
+    L.push("Date/time (UTC): " + utcStamp(a.date));
+    L.push("From: " + (a.from || "unknown"));
+    L.push("Subject: " + (a.subject || "unknown"));
+    if (a.ingressReceived) L.push("Received: " + a.ingressReceived);
+    L.push("");
+    if (a.fullHeaders) {
+      var th = trimHeaders(String(a.fullHeaders));
+      var fh = th.text;
+      var truncated = fh.length > headerCap;
+      if (truncated) fh = fh.slice(0, headerCap);
+      L.push("Full headers (plain text, as received):");
+      fh.split("\n").forEach(function (ln) { L.push(ln); });
+      if (th.stripped) L.push("[ARC/DKIM signature blocks omitted — routing and authentication headers are complete]");
+      if (truncated) L.push("[headers truncated at " + headerCap + " characters]");
+    } else if (a.ingressReceived) {
+      L.push("Key headers as evidence:");
+      L.push("  Message-ID: " + (a.messageId || "unknown"));
+      L.push("  Received: " + a.ingressReceived);
+    }
+    return L.join("\n");
   }
 
   // Gmail's compose-by-link (?view=cm) rejects very long URLs with a
@@ -626,18 +1117,31 @@
     decodeMimeParts(rawBody, headers).forEach(function (partBody) {
       urlText += " " + partBody + " " + stripTags(partBody);
     });
-    var urls = extractUrls(urlText);
+    var urls = leadWithPages(extractUrls(urlText));
     var ip = originIp(headers);
     var rf = redFlags(from, urls, text);
-    return {
+    // v1.0.67: Microsoft tenant-account signals, from the
+    // headers alone (investigate re-checks with the PTR host).
+    var authResults = parseAuthResults(headers);
+    var recvHosts = receivedHosts(headers);
+    var sendingServer = sendingServerFor(headers, ip);
+    var a0 = {
       from: from, subject: subject, date: date, messageId: messageId,
       ip: ip, urls: urls, urlHosts: rf.urlHosts, senderDomain: rf.senderDomain,
       flags: rf.flags,
       ingressReceived: evidenceHeader(headers, ip),
       fullHeaders: String(rawText).split(/\r?\n\r?\n/)[0] || "",
       bodyText: text,
-      bodyPreview: text.slice(0, 1500)
+      bodyPreview: text.slice(0, 1500),
+      authResults: authResults,
+      authAllPass: authAllPass(authResults),
+      receivedHosts: recvHosts,
+      sendingServer: sendingServer,
+      msProtectionHost: recvHosts.some(isMicrosoftProtectionHost) ||
+        isMicrosoftProtectionHost(sendingServer)
     };
+    a0.msAccountReport = isMsAccountCase(a0);
+    return a0;
   }
 
   // Full pipeline: analyze -> RDAP -> PTR -> complaint.
@@ -652,32 +1156,70 @@
     return rdapLookup(a.ip).then(function (rdap) {
       a.org = rdap ? extractOrg(rdap) : null;
       a.abuse = rdap ? extractAbuse(rdap) : null;
+      a.hyperscaler = rdap ? hyperscalerOf(rdap) : null;
       prog("Reverse DNS…");
       return reverseDns(a.ip);
     }).then(function (host) {
       a.host = host;
-      a.skipComplaint = whitelisted(host);
-      a.providerAdvice = a.skipComplaint ? providerAdvice(host) : null;
+      // v1.0.67: re-check the Microsoft tenant-account case with
+      // the PTR host in hand (the headers alone usually settle
+      // it — the protection hostname rides the ingress Received
+      // hop — but a PTR naming the pool counts too). When it
+      // fires, the Report Abuse lane is NOT skipped: it switches
+      // to the account report built by buildComplaint below.
+      a.msAccountReport = isMsAccountCase(a);
+      a.skipComplaint = a.msAccountReport
+        ? false : whitelisted(host);
+      a.providerAdvice = (!a.msAccountReport && a.skipComplaint)
+        ? providerAdvice(host) : null;
       // Gmail's report flow can be driven from the page; other providers can't.
       a.gmailAutoReport = !!(a.skipComplaint &&
         /google\.com|googlemail\.com/i.test(String(host || "")));
-      var c = buildComplaint(a);
-      a.complaint = c;
-      a.stage = "done";
-      return a;
+      // v1.0.68: in the Microsoft tenant-account case only,
+      // check the "no website" tell for the sender domain
+      // (A/AAAA for the apex and the www host, via dns.google).
+      // The flag is set ONLY on a confirmed-empty result; any
+      // error or uncertainty leaves it unset and nothing is
+      // asserted anywhere. The four queries run in parallel
+      // on a short timeout and any failure falls through to
+      // the normal finish — the panel never blocks on this.
+      var finish = function () {
+        var c = buildComplaint(a);
+        a.complaint = c;
+        a.stage = "done";
+        return a;
+      };
+      if (a.msAccountReport) {
+        var dom = (senderEmail(a.from).match(/@([\w.-]+)/) || [])[1] ||
+          a.senderDomain || "";
+        return domainNoWebsite(dom).then(function (none) {
+          a.senderDomainNoWebsite = none === true;
+          return finish();
+        }).catch(function () { return finish(); });
+      }
+      return finish();
     });
   }
 
   var api = {
     parseHeaders: parseHeaders, originIp: originIp, isPrivateIp: isPrivateIp,
     analyze: analyze, investigate: investigate, buildComplaint: buildComplaint,
-    displayHost: displayHost,
+    buildFormEvidence: buildFormEvidence, displayHost: displayHost,
     trimHeaders: trimHeaders, fitForCompose: fitForCompose,
     composeUrl: composeUrl, COMPOSE_URL_BUDGET: COMPOSE_URL_BUDGET,
     defangUrl: defangUrl, defangText: defangText,
     extractAbuse: extractAbuse, extractOrg: extractOrg, whitelisted: whitelisted,
-    providerAdvice: providerAdvice,
-    redFlags: redFlags, RDAP_BASES: RDAP_BASES
+    providerAdvice: providerAdvice, hyperscalerOf: hyperscalerOf,
+    parseAuthResults: parseAuthResults, authAllPass: authAllPass,
+    isMicrosoftProtectionHost: isMicrosoftProtectionHost,
+    buildMsAccountReport: buildMsAccountReport,
+    buildMicrosoftAccountReport: buildMsAccountReport,
+    isMsAccountCase: isMsAccountCase, senderEmail: senderEmail,
+    MS_PHISH_DESK: MS_PHISH_DESK, msDetailsNote: msDetailsNote,
+    domainNoWebsite: domainNoWebsite,
+    redFlags: redFlags, RDAP_BASES: RDAP_BASES,
+    isAssetUrl: isAssetUrl, leadWithPages: leadWithPages,
+    normalizeUrl: normalizeUrl, extractUrls: extractUrls
   };
 
   if (typeof module !== "undefined" && module.exports) {

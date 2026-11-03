@@ -1,4 +1,4 @@
-/* Spam Avenger for Outlook — task pane (Phase 1, v1.2.3).
+/* Spam Avenger for Outlook — task pane (Phase 1, v1.2.4).
  *
  * The Gmail addon's panel, rebuilt on Office.js. On open (and on
  * item change) it runs the trace automatically: full internet
@@ -48,6 +48,28 @@
  * for neutral wording that says what Outlook's Report button
  * actually does — toned down for AppSource review.
  *
+ * v1.2.4: parity with the Gmail addon's v1.0.67/v1.0.68
+ * Microsoft tenant-account behavior (Michael's call, 2026-11-02:
+ * the Outlook build gets the same updates before any AppSource
+ * submission). The engine (analyze.js, refreshed to the current
+ * Gmail build) detects a message sent by a real Microsoft 365
+ * tenant account — the traced origin is Microsoft's Outlook
+ * protection pool AND the account's SPF/DKIM/DMARC all pass.
+ * When that case fires, the EXISTING abuse-complaint section
+ * (not a separate section — Michael's standing design rule)
+ * carries a report addressed to Microsoft's phishing desk
+ * (phish@office365.microsoft.com) about the account itself,
+ * because the sending IP is a shared pool address and a host
+ * complaint against it would reach the wrong target; a short
+ * note inside the section says so. The details block follows:
+ * the Abuse contact row names the phishing desk, and the
+ * "makeup" line is replaced by the engine's flipped note
+ * naming the account, which adds a sentence about the sender
+ * domain having no website when the engine's DNS check
+ * confirmed that (no A/AAAA records for the domain or its www
+ * host — asserted only on a confirmed-empty result). All other
+ * senders render exactly as before.
+ *
  * Every async call is wrapped with a timeout and every failure
  * surfaces as a short user-readable line carrying the version
  * tag — the pane never hangs silently.
@@ -55,7 +77,7 @@
 (function () {
   "use strict";
 
-  var VERSION = "1.2.3";
+  var VERSION = "1.2.4";
   var TAG = "v" + VERSION;
 
   function $(id) { return document.getElementById(id); }
@@ -440,8 +462,19 @@
       details.appendChild(mkRow("Server",
         a.host ? SpamAvenger.displayHost(a.host) : "unknown"));
       details.appendChild(mkRow("Owned by", a.org || "unknown"));
-      details.appendChild(mkRow("Abuse contact", a.abuse || "not published"));
+      // v1.2.4 (Gmail v1.0.68 parity): in the Microsoft
+      // tenant-account case, the abuse contact that matters is
+      // the phishing desk the complaint section now targets —
+      // not the pool IP's RDAP contact — and the makeup line
+      // below is backwards (the From account is real), so the
+      // engine builds a flipped note naming the account.
+      details.appendChild(mkRow("Abuse contact",
+        a.msAccountReport ? "phish@office365.microsoft.com"
+                          : (a.abuse || "not published")));
+      var detailNote = a.msAccountReport && SpamAvenger.msDetailsNote
+        ? SpamAvenger.msDetailsNote(a) : null;
       details.appendChild(h("p", { "class": "sf-note" },
+        detailNote ||
         'The "From" address is makeup. The IP is the face underneath.'));
     }
     if (a.flags && a.flags.length) {
@@ -516,6 +549,26 @@
       var compSec = accSection("sf-sec-complaint", "sf-btn-green",
         "Abuse complaint — ready to send");
       var cw = h("div", { "class": "sf-complaint" });
+      // v1.2.4 (Gmail v1.0.67 parity, Michael's correction):
+      // NOT a separate section — this is the same abuse
+      // complaint section, switched. When the traced origin is
+      // Microsoft's Outlook protection pool and the account's
+      // SPF/DKIM/DMARC all pass, the complaint below is
+      // addressed to Microsoft's phishing desk
+      // (phish@office365.microsoft.com) and reports the
+      // sender's ACCOUNT, because the IP is Microsoft's shared
+      // pool and a host complaint against it would hit the
+      // wrong target. The note says so; the section, textarea,
+      // and Open-in-Outlook flow are the ordinary complaint
+      // section's, unchanged.
+      if (a.msAccountReport) {
+        cw.appendChild(h("p", { "class": "sf-note" },
+          "This came from a real Microsoft account on " +
+          "Microsoft's shared Outlook protection servers, so " +
+          "this report goes to Microsoft's phishing desk " +
+          "about the account itself \u2014 not a host complaint " +
+          "against the shared IP."));
+      }
       var ta = h("textarea", { id: "sf-complaint-text" });
       ta.readOnly = true;
       ta.value = "To: " + c.to + "\nSubject: " + c.subject + "\n\n" + c.body;
